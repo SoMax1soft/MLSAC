@@ -23,10 +23,7 @@ public class MenuConfig {
     }
 
     public void load() {
-        if (!configFile.exists()) {
-            plugin.saveResource("menu.yml", false);
-        }
-        config = YamlConfiguration.loadConfiguration(configFile);
+        config = ConfigSyncUtil.loadAndSync(plugin, "menu.yml", configFile);
     }
 
     public FileConfiguration getConfig() {

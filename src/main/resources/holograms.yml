@@ -1,12 +1,33 @@
-# Configuration for Suspect Nametags (ArmorStands)
+# Configuration for Suspect Nametags
 nametags:
   enabled: true
-  format: "&6▶ &7AVG: &f{AVG} &8| {HISTORY} &6◀"
-  height_offset: 0.2
-  update_interval_ticks: 1
+  position: "BELOW_NAME" # ABOVE_NAME | BELOW_NAME
+  format: '&6▶AVG &f&l{AVG}% &7| {HISTORY}'
+  above-name-format: '&6▶AVG &f&l{AVG}% &7| {HISTORY}'
+  below-name-format: '&6▶AVG &f&l{AVG}% &7| {HISTORY}'
+  below-name-title: ''
+  fast-format: '&2F&f{RESULT}%'
+  pro-format: '&6P&f{RESULT}%'
+  ultra-format: '&cU&f{RESULT}%'
+  history-limit: 8
+  update-interval-ticks: 10
+  view-distance: 64
+  fallback:
+    avg: '--'
+    last: '--'
+    fast: '--'
+    pro: '--'
+    ultra: '--'
+    history: '-'
+    buffer: '--'
   colors:
-    low: "&a"
-    medium: "&6"
-    high: "&c"
-    critical: "&4"
-    critical_bold: "&4&l"
+    low: '&f'
+    medium: '&f'
+    high: '&c'
+    critical: '&c'
+    critical_bold: '&4'
+    thresholds:
+      medium: 0.5
+      high: 0.6
+      critical: 0.8
+      critical-bold: 0.9

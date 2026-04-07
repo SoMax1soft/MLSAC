@@ -43,6 +43,7 @@ import wtf.mlsac.scheduler.ScheduledTask;
 import wtf.mlsac.scheduler.SchedulerManager;
 import wtf.mlsac.session.ISessionManager;
 import wtf.mlsac.util.ColorUtil;
+import wtf.mlsac.util.ProbabilityFormatUtil;
 import wtf.mlsac.violation.ViolationManager;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -50,6 +51,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import com.github.retrooper.packetevents.PacketEvents;
@@ -62,6 +64,8 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
     private final Main plugin;
     private final Map<UUID, UUID> probTracking = new ConcurrentHashMap<>();
     private final Map<UUID, ScheduledTask> probTasks = new ConcurrentHashMap<>();
+    private final Map<String, Long> reinstallConfirmations = new ConcurrentHashMap<>();
+    private static final long REINSTALL_CONFIRM_WINDOW_MILLIS = TimeUnit.SECONDS.toMillis(3);
 
     public CommandHandler(ISessionManager sessionManager, AlertManager alertManager,
             AICheck aiCheck, Main plugin) {
@@ -105,6 +109,8 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
                 return handleProb(sender, args);
             case "reload":
                 return handleReload(sender);
+            case "reinstall":
+                return handleReinstall(sender);
             case "datastatus":
                 return handleDataStatus(sender);
             case "kicklist":
@@ -202,11 +208,13 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
             if (data == null) {
                 message = ColorUtil.colorize("&7" + targetPlayer.getName() + ": &eНет данных");
             } else {
-                double prob = data.getLastProbability();
                 double buffer = data.getBuffer();
                 int vl = plugin.getViolationManager().getViolationLevel(targetId);
-                message = ColorUtil.colorize(plugin.getMessagesConfig().getMessage("actionbar-format",
-                        targetPlayer.getName(), prob, buffer, vl));
+                String template = plugin.getMessagesConfig().getMessage("actionbar-format",
+                        targetPlayer.getName(), data.getLastProbability(), buffer, vl);
+                template = ProbabilityFormatUtil.applyModelPlaceholders(template, data)
+                        .replace("{PLAYER}", targetPlayer.getName());
+                message = ColorUtil.colorize(template);
             }
             sendActionBar(adminPlayer, message);
         }, 0L, 10L);
@@ -237,6 +245,38 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
         plugin.reloadPluginConfig();
         sender.sendMessage(getPrefix() + msg("config-reloaded"));
         return true;
+    }
+
+    private boolean handleReinstall(CommandSender sender) {
+        if (!sender.hasPermission(Permissions.ADMIN)) {
+            sender.sendMessage(getPrefix() + msg("no-permission"));
+            return true;
+        }
+        String confirmationKey = getConfirmationKey(sender);
+        long now = System.currentTimeMillis();
+        Long expiresAt = reinstallConfirmations.get(confirmationKey);
+        if (expiresAt == null || expiresAt < now) {
+            reinstallConfirmations.put(confirmationKey, now + REINSTALL_CONFIRM_WINDOW_MILLIS);
+            sender.sendMessage(getPrefix() + ColorUtil.colorize(
+                    "&eПовторно введите &f/mlsac reinstall &eв течение 3 секунд для подтверждения."));
+            return true;
+        }
+        reinstallConfirmations.remove(confirmationKey);
+        boolean success = plugin.reinstallPluginConfig();
+        if (success) {
+            sender.sendMessage(getPrefix() + ColorUtil.colorize(
+                    "&aconfig.yml was reinstalled to defaults. Saved values: &fapi-key&a and &fAI detection&a."));
+        } else {
+            sender.sendMessage(getPrefix() + ColorUtil.colorize("&cFailed to reinstall config.yml. Check console."));
+        }
+        return true;
+    }
+
+    private String getConfirmationKey(CommandSender sender) {
+        if (sender instanceof Player) {
+            return ((Player) sender).getUniqueId().toString();
+        }
+        return "console:" + sender.getName().toLowerCase();
     }
 
     private boolean handleKickList(CommandSender sender) {
@@ -329,6 +369,7 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
         } else {
             for (String line : info) {
                 sender.sendMessage(ColorUtil.colorize(line
+                        .replace("{PLAYER}", target.getName())
                         .replace("{SENS}", sens)
                         .replace("{CLIENT}", clientVer)
                         .replace("{DETECTIONS}", String.valueOf(detections))));
@@ -475,6 +516,7 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
         sender.sendMessage(msg("usage-punish"));
         sender.sendMessage(msg("usage-profile"));
         sender.sendMessage(msg("usage-reload"));
+        sender.sendMessage(ColorUtil.colorize("&7  /mlsac reinstall - Reinstall config and keep api-key + AI detection"));
         sender.sendMessage(ColorUtil.colorize("&7  /mlsac kicklist - Последние 10 киков от AI античита"));
     }
 
@@ -483,7 +525,7 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
         List<String> completions = new ArrayList<>();
         if (args.length == 1) {
             List<String> commands = Arrays.asList("start", "stop", "datastatus", "alerts", "prob", "reload",
-                    "kicklist", "suspects", "punish", "profile");
+                    "reinstall", "kicklist", "suspects", "punish", "profile");
             completions.addAll(filterStartsWith(commands, args[0]));
         } else if (args.length == 2) {
             String subCommand = args[0].toLowerCase();
@@ -529,5 +571,6 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
         }
         probTasks.clear();
         probTracking.clear();
+        reinstallConfirmations.clear();
     }
 }

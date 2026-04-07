@@ -18,24 +18,24 @@ outputDirectory: "data"
 # └───────────────────────────────────────────────────────────────────────────────┘
 # Guide https://mlsac.wtf/dashboard/wiki
 detection:
-  # Enable AI-based cheat detection
-  enabled: false
+  # Enable AI-based cheat detection 
+  enabled: false # DONT FORGET TO TURN ON (enabled: true) <---
   
   # AI server endpoint
-  endpoint: "https://api.mlsac.wtf"
+  endpoint: "https://api.mlsac.wtf" # Do not change!
   
   # API key for authentication
   # To buy API key visit https://mlsac.wtf/dashboard
-  # Free trial up to 3 days is also available in dashboard
+  # Free trial is also available in dashboard
   api-key: "your-api-key"
 
   # Number of ticks to collect per sample
   # Do not change unless you know what you are doing
-  sample-size: 40
+  sample-size: 40 # Do not change!
   
   # Interval between samples (in ticks)
   # Do not change unless you know what you are doing
-  sample-interval: 10
+  sample-interval: 10 # Do not change!
   
   # WorldGuard integration for region-based AI check bypass.
   # Priority system: If player is in multiple regions, the highest priority region
@@ -59,10 +59,10 @@ detection:
       name: "Fast-A1"
       only-alert: false # Stable model - punishments enabled
     pro:
-      name: "Pro-A1"
-      only-alert: true # Newest model - testing mode - no punishments
+      name: "Pro-E1"
+      only-alert: false # Newest model - punishments enabled
     ultra:
-      name: "Ultra-A1"
+      name: "Ultra-D1"
       only-alert: true # Model in development - testing mode - no punishments
     experimental:
       name: "Experimental" # You can change colors but change names is necessary
@@ -127,14 +127,14 @@ violation:
 penalties:
   # Minimum probability required for penalty execution (lowered for aggressiveness)
   # Do not change unless you know what you are doing
-  min-probability: 0.01
+  min-probability: 0.01 # Do not change!
   
   # Ban animation settings
   # Epic animation: levitation + purple/pink particles + lightning strike
   animation:
     enabled: true
     # Duration in ticks (20 ticks = 1 second) - decreased for fast ban
-    duration: 80
+    duration: 80 # Do not change!
   
   # Actions by violation level
   # Aggressive system: alert -> kick -> ban
@@ -163,6 +163,41 @@ analytics:
     orange: 20
 
 # ┌───────────────────────────────────────────────────────────────────────────────┐
+# │                      ALERT RESPONSE / TROLL SYSTEM                            │
+# └───────────────────────────────────────────────────────────────────────────────┘
+# Triggers on alerts.threshold hits. Uses rolling detection windows.
+alert-responses:
+  enabled: true
+
+  damage-reduction:
+    window-seconds: 10
+    stages:
+      - detections: 1
+        reduction-percent: 15
+        duration-seconds: 8
+      - detections: 2
+        reduction-percent: 35
+        duration-seconds: 12
+      - detections: 3
+        reduction-percent: 100
+        duration-seconds: 16
+
+  troll:
+    window-seconds: 20
+    actions:
+      - type: "shuffle_inventory"
+        detections: 4
+        cooldown-seconds: 20
+        message: "&6[MLSAC] &c{PLAYER} &7| &6Forced to shuffle&f his inventory &7| after &c{DETECTIONS} detections&f."
+      - type: "drop_weapon"
+        detections: 3
+        cooldown-seconds: 20
+        only-sword: true
+        horizontal-velocity: 1.9
+        vertical-velocity: 0.55
+        message: "&6[MLSAC] &c{PLAYER} &7| &6Forced to drop&f his weapon &7| after &c{DETECTIONS} detections&f."
+
+# ┌───────────────────────────────────────────────────────────────────────────────┐
 # │                            FOLIA SETTINGS                                     │
 # └───────────────────────────────────────────────────────────────────────────────┘
 #
@@ -173,18 +208,18 @@ analytics:
 folia:
   # Enable Folia-specific optimizations
   # When disabled, the plugin will use standard Bukkit scheduler even on Folia
-  enabled: true
+  enabled: true # Do not change!
   
   # Thread pool size for async tasks (0 = use Folia default)
-  thread-pool-size: 0
+  thread-pool-size: 0 # Do not change!
   
   # Entity scheduler settings
   # Use entity-specific schedulers for entity-related tasks
-  entity-scheduler:
+  entity-scheduler: # Do not change!
     enabled: true
   
   # Region scheduler settings
   # Use region-specific schedulers for location-based tasks
-  region-scheduler:
+  region-scheduler: # Do not change!
     enabled: true
 

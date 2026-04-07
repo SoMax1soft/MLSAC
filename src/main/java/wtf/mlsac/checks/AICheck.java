@@ -273,7 +273,7 @@ public class AICheck {
                     ", onlyAlert=" + isOnlyAlert);
 
             if (!isOnlyAlert) {
-                data.updateBuffer(probability, config.getAiBufferMultiplier(),
+                data.updateBuffer(probability, modelName, config.getAiBufferMultiplier(),
                         config.getAiBufferDecrease(), config.getAiAlertThreshold());
             } else {
                 plugin.debug("[AI] Only-alert mode for model " + modelName + ", skipping buffer/punishment");
@@ -281,6 +281,10 @@ public class AICheck {
 
             if (alertManager.shouldAlert(probability)) {
                 alertManager.sendAlert(playerName, probability, data.getBuffer(), modelName);
+                Player player = Bukkit.getPlayer(playerUuid);
+                if (player != null && player.isOnline() && plugin.getDetectionResponseManager() != null) {
+                    plugin.getDetectionResponseManager().registerDetection(player, probability);
+                }
             }
 
             if (!isOnlyAlert && data.shouldFlag(config.getAiBufferFlag())) {

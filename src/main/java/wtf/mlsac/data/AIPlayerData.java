@@ -26,7 +26,10 @@ package wtf.mlsac.data;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import wtf.mlsac.util.AimProcessor;
@@ -37,6 +40,9 @@ public class AIPlayerData {
     private final AimProcessor aimProcessor;
     private final Deque<TickData> tickBuffer;
     private final Deque<Double> probabilityHistory;
+    private final Deque<ModelProbabilityEntry> modelProbabilityHistory;
+    private final Map<String, Double> lastProbabilitiesByModel;
+    private final Map<String, Deque<Double>> probabilityHistoryByModel;
     private final int sequence;
     private int ticksSinceAttack;
     private int ticksStep;
@@ -57,6 +63,9 @@ public class AIPlayerData {
         this.aimProcessor = new AimProcessor();
         this.tickBuffer = new ArrayDeque<>(sequence);
         this.probabilityHistory = new ArrayDeque<>(10);
+        this.modelProbabilityHistory = new ArrayDeque<>(10);
+        this.lastProbabilitiesByModel = new HashMap<>();
+        this.probabilityHistoryByModel = new HashMap<>();
         this.ticksSinceAttack = sequence + 1;
         this.ticksStep = 0;
         this.buffer = 0.0;
@@ -205,6 +214,9 @@ public class AIPlayerData {
         try {
             tickBuffer.clear();
             probabilityHistory.clear();
+            modelProbabilityHistory.clear();
+            lastProbabilitiesByModel.clear();
+            probabilityHistoryByModel.clear();
             aimProcessor.reset();
             pendingRequest = false;
         } finally {
@@ -244,6 +256,11 @@ public class AIPlayerData {
     }
 
     public void updateBuffer(double probability, double multiplier, double decreaseAmount, double threshold) {
+        updateBuffer(probability, null, multiplier, decreaseAmount, threshold);
+    }
+
+    public void updateBuffer(double probability, String modelName, double multiplier, double decreaseAmount,
+            double threshold) {
         lock.writeLock().lock();
         try {
             this.lastProbability = probability;
@@ -251,6 +268,18 @@ public class AIPlayerData {
                 probabilityHistory.pollFirst();
             }
             probabilityHistory.addLast(probability);
+            String normalizedModel = normalizeModelName(modelName);
+            if (modelProbabilityHistory.size() >= 10) {
+                modelProbabilityHistory.pollFirst();
+            }
+            modelProbabilityHistory.addLast(new ModelProbabilityEntry(normalizedModel, probability));
+            lastProbabilitiesByModel.put(normalizedModel, probability);
+            Deque<Double> perModelHistory = probabilityHistoryByModel.computeIfAbsent(normalizedModel,
+                    ignored -> new ArrayDeque<>(10));
+            if (perModelHistory.size() >= 10) {
+                perModelHistory.pollFirst();
+            }
+            perModelHistory.addLast(probability);
             if (probability > 0.8) {
                 this.highProbabilityDetections++;
             }
@@ -316,6 +345,44 @@ public class AIPlayerData {
         }
     }
 
+    public double getLastProbability(String modelName) {
+        lock.readLock().lock();
+        try {
+            return lastProbabilitiesByModel.getOrDefault(normalizeModelName(modelName), 0.0D);
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    public double getAverageProbability(String modelName) {
+        lock.readLock().lock();
+        try {
+            Deque<Double> history = probabilityHistoryByModel.get(normalizeModelName(modelName));
+            if (history == null || history.isEmpty()) {
+                return 0.0D;
+            }
+            return history.stream().mapToDouble(Double::doubleValue).average().orElse(0.0D);
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    public List<ModelProbabilityEntry> getModelProbabilityHistory() {
+        lock.readLock().lock();
+        try {
+            return new ArrayList<>(modelProbabilityHistory);
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private String normalizeModelName(String modelName) {
+        if (modelName == null || modelName.trim().isEmpty()) {
+            return "unknown";
+        }
+        return modelName.trim().toLowerCase(Locale.ROOT);
+    }
+
     public AimProcessor getAimProcessor() {
         return aimProcessor;
     }
@@ -330,5 +397,23 @@ public class AIPlayerData {
 
     public int getHighProbabilityDetections() {
         return highProbabilityDetections;
+    }
+
+    public static final class ModelProbabilityEntry {
+        private final String modelName;
+        private final double probability;
+
+        public ModelProbabilityEntry(String modelName, double probability) {
+            this.modelName = modelName;
+            this.probability = probability;
+        }
+
+        public String getModelName() {
+            return modelName;
+        }
+
+        public double getProbability() {
+            return probability;
+        }
     }
 }

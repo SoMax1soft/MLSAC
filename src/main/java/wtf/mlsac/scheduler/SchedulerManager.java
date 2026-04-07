@@ -23,6 +23,7 @@
 
 package wtf.mlsac.scheduler;
 
+import org.bukkit.Bukkit;
 import org.bukkit.plugin.Plugin;
 
 public class SchedulerManager {
@@ -38,7 +39,7 @@ public class SchedulerManager {
             throw new IllegalArgumentException("Plugin cannot be null");
         }
         try {
-            serverType = detectServerType();
+            serverType = detectServerType(plugin);
             if (serverType == ServerType.FOLIA) {
                 // Use reflection to avoid NoClassDefFoundError on non-Folia servers when
                 // verifying the class
@@ -74,7 +75,12 @@ public class SchedulerManager {
         return initialized;
     }
 
-    private static ServerType detectServerType() {
+    private static ServerType detectServerType(Plugin plugin) {
+        String serverName = plugin.getServer().getName();
+        String version = plugin.getServer().getVersion();
+        if (!containsFoliaMarker(serverName) && !containsFoliaMarker(version)) {
+            return ServerType.BUKKIT;
+        }
         try {
             Class.forName("io.papermc.paper.threadedregions.scheduler.RegionScheduler");
             Class.forName("io.papermc.paper.threadedregions.scheduler.GlobalRegionScheduler");
@@ -83,6 +89,10 @@ public class SchedulerManager {
         } catch (Throwable e) {
             return ServerType.BUKKIT;
         }
+    }
+
+    private static boolean containsFoliaMarker(String value) {
+        return value != null && value.toLowerCase().contains("folia");
     }
 
     public static void reset() {

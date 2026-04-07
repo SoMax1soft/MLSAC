@@ -12,8 +12,22 @@ gui:
         - "&7History (Last {HISTORY_SIZE}):"
         - "{HISTORY}"
         - "&8&m------------------------"
-        - "&eLeft-Click to Teleport"
-        - "&eRight-Click to TP + GM3"
+        - "&eLMB: custom action"
+        - "&eRMB: custom action"
+  actions:
+    left-click:
+      - "[teleport]"
+      - "[message] &aTeleported to {PLAYER}"
+    right-click:
+      - "[gamemode] SPECTATOR"
+      - "[teleport]"
+      - "[message] &aTeleported to {PLAYER} in Spectator mode"
+#    shift-left-click:
+#      - "[player] mlsac profile {PLAYER}"
+#    shift-right-click:
+#      - "[console] tp {ADMIN} {PLAYER}"
+#    middle-click:
+#      - "[close]"
     previous_page:
       material: ARROW
       name: "&ePrevious Page (&f{PAGE}&e)"

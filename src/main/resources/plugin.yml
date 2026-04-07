@@ -1,7 +1,7 @@
 name: MLSAC
 version: '${version}'
 main: wtf.mlsac.Main
-api-version: '1.13'
+api-version: '1.16'
 description: "MLSAC.WTF - Buy API"
 folia-supported: true
 
@@ -14,6 +14,7 @@ commands:
       /mlsac alerts - Toggle alerts
       /mlsac prob <player> - Show player probability
       /mlsac reload - Reload config
+      /mlsac reinstall - Reinstall config and keep api-key + AI detection
     permission: mlsac.admin
     aliases: [ml]
 

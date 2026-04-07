@@ -6,7 +6,6 @@
 package wtf.mlsac.config;
 
 import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
@@ -23,10 +22,7 @@ public class HologramConfig {
     }
 
     public void load() {
-        if (!configFile.exists()) {
-            plugin.saveResource("holograms.yml", false);
-        }
-        config = YamlConfiguration.loadConfiguration(configFile);
+        config = ConfigSyncUtil.loadAndSync(plugin, "holograms.yml", configFile);
     }
 
     public FileConfiguration getConfig() {

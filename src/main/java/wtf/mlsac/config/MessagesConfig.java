@@ -6,11 +6,10 @@
 package wtf.mlsac.config;
 
 import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
+import wtf.mlsac.util.ProbabilityFormatUtil;
 
 import java.io.File;
-import java.io.IOException;
 
 public class MessagesConfig {
     private final JavaPlugin plugin;
@@ -23,10 +22,7 @@ public class MessagesConfig {
     }
 
     public void load() {
-        if (!configFile.exists()) {
-            plugin.saveResource("messages.yml", false);
-        }
-        config = YamlConfiguration.loadConfiguration(configFile);
+        config = ConfigSyncUtil.loadAndSync(plugin, "messages.yml", configFile);
     }
 
     public FileConfiguration getConfig() {
@@ -51,7 +47,7 @@ public class MessagesConfig {
     public String getMessage(String key, String player, double probability, double buffer, int vl) {
         String msg = getMessage(key);
         String playerValue = player != null ? player : "";
-        String probValue = String.format("%.2f", probability);
+        String probValue = ProbabilityFormatUtil.formatPercent(probability) + "%";
         String bufferValue = String.format("%.1f", buffer);
         String vlValue = String.valueOf(vl);
         return msg

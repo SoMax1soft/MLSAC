@@ -79,6 +79,11 @@ public class Config {
     private final int analyticsMinDetections;
     private final int analyticsColorGreenMax;
     private final int analyticsColorOrangeMax;
+    private final boolean alertResponsesEnabled;
+    private final int damageReductionWindowSeconds;
+    private final List<DamageReductionStage> damageReductionStages;
+    private final int trollWindowSeconds;
+    private final List<TrollActionConfig> trollActions;
     public static final boolean DEFAULT_DEBUG = false;
     public static final String DEFAULT_OUTPUT_DIRECTORY = "plugins/MLSAC/data";
     public static final int PRE_HIT_TICKS = 5;
@@ -124,6 +129,8 @@ public class Config {
     public static final int DEFAULT_ANALYTICS_MIN_DETECTIONS = 5;
     public static final int DEFAULT_ANALYTICS_COLOR_GREEN_MAX = 10;
     public static final int DEFAULT_ANALYTICS_COLOR_ORANGE_MAX = 20;
+    public static final boolean DEFAULT_ALERT_RESPONSES_ENABLED = true;
+    public static final int DEFAULT_ALERT_RESPONSE_WINDOW_SECONDS = 10;
 
     public Config() {
         this.debug = DEFAULT_DEBUG;
@@ -175,6 +182,11 @@ public class Config {
         this.analyticsMinDetections = DEFAULT_ANALYTICS_MIN_DETECTIONS;
         this.analyticsColorGreenMax = DEFAULT_ANALYTICS_COLOR_GREEN_MAX;
         this.analyticsColorOrangeMax = DEFAULT_ANALYTICS_COLOR_ORANGE_MAX;
+        this.alertResponsesEnabled = DEFAULT_ALERT_RESPONSES_ENABLED;
+        this.damageReductionWindowSeconds = DEFAULT_ALERT_RESPONSE_WINDOW_SECONDS;
+        this.damageReductionStages = createDefaultDamageReductionStages();
+        this.trollWindowSeconds = DEFAULT_ALERT_RESPONSE_WINDOW_SECONDS;
+        this.trollActions = createDefaultTrollActions();
     }
 
     private static Set<String> createDefaultCheatReasons() {
@@ -301,6 +313,117 @@ public class Config {
         this.analyticsMinDetections = config.getInt("analytics.min-detections", DEFAULT_ANALYTICS_MIN_DETECTIONS);
         this.analyticsColorGreenMax = config.getInt("analytics.colors.green", DEFAULT_ANALYTICS_COLOR_GREEN_MAX);
         this.analyticsColorOrangeMax = config.getInt("analytics.colors.orange", DEFAULT_ANALYTICS_COLOR_ORANGE_MAX);
+
+        this.alertResponsesEnabled = config.getBoolean("alert-responses.enabled", DEFAULT_ALERT_RESPONSES_ENABLED);
+        this.damageReductionWindowSeconds = config.getInt("alert-responses.damage-reduction.window-seconds",
+                DEFAULT_ALERT_RESPONSE_WINDOW_SECONDS);
+        this.damageReductionStages = loadDamageReductionStages(config, logger);
+        this.trollWindowSeconds = config.getInt("alert-responses.troll.window-seconds",
+                DEFAULT_ALERT_RESPONSE_WINDOW_SECONDS);
+        this.trollActions = loadTrollActions(config, logger);
+    }
+
+    private static List<DamageReductionStage> createDefaultDamageReductionStages() {
+        List<DamageReductionStage> stages = new ArrayList<>();
+        stages.add(new DamageReductionStage(1, 15.0, 8));
+        stages.add(new DamageReductionStage(2, 35.0, 12));
+        stages.add(new DamageReductionStage(3, 55.0, 16));
+        return Collections.unmodifiableList(stages);
+    }
+
+    private static List<TrollActionConfig> createDefaultTrollActions() {
+        List<TrollActionConfig> actions = new ArrayList<>();
+        actions.add(new TrollActionConfig("shuffle_inventory", 3, 20, true, 1.4, 0.45,
+                "&cMLSAC shuffled {PLAYER}'s inventory after {DETECTIONS} detections."));
+        actions.add(new TrollActionConfig("drop_weapon", 4, 20, true, 1.9, 0.55,
+                "&cMLSAC launched {PLAYER}'s weapon after {DETECTIONS} detections."));
+        return Collections.unmodifiableList(actions);
+    }
+
+    private List<DamageReductionStage> loadDamageReductionStages(FileConfiguration config, Logger logger) {
+        List<Map<?, ?>> rawStages = config.getMapList("alert-responses.damage-reduction.stages");
+        List<DamageReductionStage> stages = new ArrayList<>();
+        for (Map<?, ?> rawStage : rawStages) {
+            int detections = getInt(rawStage.get("detections"), 0);
+            double reductionPercent = getDouble(rawStage.get("reduction-percent"), 0.0);
+            int durationSeconds = getInt(rawStage.get("duration-seconds"), 0);
+            if (detections <= 0 || durationSeconds <= 0 || reductionPercent <= 0.0) {
+                if (logger != null) {
+                    logger.warning("[Config] Skipping invalid damage reduction stage: " + rawStage);
+                }
+                continue;
+            }
+            stages.add(new DamageReductionStage(detections,
+                    Math.max(0.0, Math.min(100.0, reductionPercent)),
+                    durationSeconds));
+        }
+        if (stages.isEmpty()) {
+            stages.addAll(createDefaultDamageReductionStages());
+        }
+        stages.sort(Comparator.comparingInt(DamageReductionStage::getDetections));
+        return Collections.unmodifiableList(stages);
+    }
+
+    private List<TrollActionConfig> loadTrollActions(FileConfiguration config, Logger logger) {
+        List<Map<?, ?>> rawActions = config.getMapList("alert-responses.troll.actions");
+        List<TrollActionConfig> actions = new ArrayList<>();
+        for (Map<?, ?> rawAction : rawActions) {
+            Object typeValue = rawAction.containsKey("type") ? rawAction.get("type") : "";
+            String type = String.valueOf(typeValue).trim().toLowerCase(Locale.ROOT);
+            int detections = getInt(rawAction.get("detections"), 0);
+            int cooldownSeconds = getInt(rawAction.get("cooldown-seconds"), 0);
+            boolean onlySword = getBoolean(rawAction.get("only-sword"), true);
+            double horizontalVelocity = getDouble(rawAction.get("horizontal-velocity"), 1.4);
+            double verticalVelocity = getDouble(rawAction.get("vertical-velocity"), 0.45);
+            String message = rawAction.containsKey("message") ? String.valueOf(rawAction.get("message")) : "";
+
+            if (type.isEmpty() || detections <= 0) {
+                if (logger != null) {
+                    logger.warning("[Config] Skipping invalid troll action: " + rawAction);
+                }
+                continue;
+            }
+
+            actions.add(new TrollActionConfig(type, detections, Math.max(0, cooldownSeconds), onlySword,
+                    horizontalVelocity, verticalVelocity, message));
+        }
+        if (actions.isEmpty()) {
+            actions.addAll(createDefaultTrollActions());
+        }
+        actions.sort(Comparator.comparingInt(TrollActionConfig::getDetections));
+        return Collections.unmodifiableList(actions);
+    }
+
+    private int getInt(Object value, int fallback) {
+        if (value instanceof Number) {
+            return ((Number) value).intValue();
+        }
+        try {
+            return Integer.parseInt(String.valueOf(value));
+        } catch (Exception ignored) {
+            return fallback;
+        }
+    }
+
+    private double getDouble(Object value, double fallback) {
+        if (value instanceof Number) {
+            return ((Number) value).doubleValue();
+        }
+        try {
+            return Double.parseDouble(String.valueOf(value));
+        } catch (Exception ignored) {
+            return fallback;
+        }
+    }
+
+    private boolean getBoolean(Object value, boolean fallback) {
+        if (value instanceof Boolean) {
+            return (Boolean) value;
+        }
+        if (value == null) {
+            return fallback;
+        }
+        return Boolean.parseBoolean(String.valueOf(value));
     }
 
     private double clampThreshold(double value, String configPath, Logger logger) {
@@ -552,6 +675,99 @@ public class Config {
             return "&6";
         } else {
             return "&c";
+        }
+    }
+
+    public boolean isAlertResponsesEnabled() {
+        return alertResponsesEnabled;
+    }
+
+    public int getDamageReductionWindowSeconds() {
+        return damageReductionWindowSeconds;
+    }
+
+    public List<DamageReductionStage> getDamageReductionStages() {
+        return damageReductionStages;
+    }
+
+    public int getTrollWindowSeconds() {
+        return trollWindowSeconds;
+    }
+
+    public List<TrollActionConfig> getTrollActions() {
+        return trollActions;
+    }
+
+    public static final class DamageReductionStage {
+        private final int detections;
+        private final double reductionPercent;
+        private final int durationSeconds;
+
+        public DamageReductionStage(int detections, double reductionPercent, int durationSeconds) {
+            this.detections = detections;
+            this.reductionPercent = reductionPercent;
+            this.durationSeconds = durationSeconds;
+        }
+
+        public int getDetections() {
+            return detections;
+        }
+
+        public double getReductionPercent() {
+            return reductionPercent;
+        }
+
+        public int getDurationSeconds() {
+            return durationSeconds;
+        }
+    }
+
+    public static final class TrollActionConfig {
+        private final String type;
+        private final int detections;
+        private final int cooldownSeconds;
+        private final boolean onlySword;
+        private final double horizontalVelocity;
+        private final double verticalVelocity;
+        private final String message;
+
+        public TrollActionConfig(String type, int detections, int cooldownSeconds, boolean onlySword,
+                double horizontalVelocity, double verticalVelocity, String message) {
+            this.type = type;
+            this.detections = detections;
+            this.cooldownSeconds = cooldownSeconds;
+            this.onlySword = onlySword;
+            this.horizontalVelocity = horizontalVelocity;
+            this.verticalVelocity = verticalVelocity;
+            this.message = message;
+        }
+
+        public String getType() {
+            return type;
+        }
+
+        public int getDetections() {
+            return detections;
+        }
+
+        public int getCooldownSeconds() {
+            return cooldownSeconds;
+        }
+
+        public boolean isOnlySword() {
+            return onlySword;
+        }
+
+        public double getHorizontalVelocity() {
+            return horizontalVelocity;
+        }
+
+        public double getVerticalVelocity() {
+            return verticalVelocity;
+        }
+
+        public String getMessage() {
+            return message;
         }
     }
 }
