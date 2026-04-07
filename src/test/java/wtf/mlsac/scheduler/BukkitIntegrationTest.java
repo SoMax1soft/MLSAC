@@ -107,11 +107,12 @@ class BukkitIntegrationTest {
     }
     @Test
     void testServerTypeDetectionLogic() {
+        boolean foliaApiAvailable = SchedulerManager.hasFoliaApi();
         try {
-            Class.forName("io.papermc.paper.threadedregions.scheduler.RegionScheduler");
-            assertTrue(true, "Folia API is available");
+            Class.forName("io.papermc.paper.threadedregions.RegionizedServer");
+            assertTrue(foliaApiAvailable, "Folia should be detected when Folia API is present");
         } catch (ClassNotFoundException e) {
-            assertTrue(true, "Folia API not available - expected in test environment");
+            assertFalse(foliaApiAvailable, "Folia should not be detected when Folia API is absent");
         }
     }
     @Test

@@ -24,11 +24,13 @@
 
 package wtf.mlsac.compat;
 import org.bukkit.Bukkit;
+import wtf.mlsac.scheduler.SchedulerManager;
 import java.util.logging.Logger;
 public final class VersionAdapter {
     private static VersionAdapter instance;
     private final ServerVersion version;
     private final boolean isPaper;
+    private final boolean isFolia;
     private final String rawVersion;
     private final Logger logger;
     private boolean debugEnabled = false;
@@ -37,11 +39,16 @@ public final class VersionAdapter {
         this.rawVersion = Bukkit.getBukkitVersion();
         this.version = detectVersion();
         this.isPaper = detectPaper();
+        this.isFolia = SchedulerManager.hasFoliaApi();
     }
     VersionAdapter(Logger logger, ServerVersion version, boolean isPaper) {
+        this(logger, version, isPaper, false);
+    }
+    VersionAdapter(Logger logger, ServerVersion version, boolean isPaper, boolean isFolia) {
         this.logger = logger;
         this.version = version;
         this.isPaper = isPaper;
+        this.isFolia = isFolia;
         this.rawVersion = "test";
     }
     public static void init(Logger logger) {
@@ -66,6 +73,9 @@ public final class VersionAdapter {
     }
     public boolean isPaper() {
         return isPaper;
+    }
+    public boolean isFolia() {
+        return isFolia;
     }
     public String getRawVersion() {
         return rawVersion;
@@ -122,7 +132,7 @@ public final class VersionAdapter {
         if (logger == null) return;
         logger.info("=== MLSAC Version Compatibility ===");
         logger.info("Server version: " + version + " (raw: " + rawVersion + ")");
-        logger.info("Server type: " + (isPaper ? "Paper" : "Spigot/Bukkit"));
+        logger.info("Server type: " + getServerTypeName());
         logger.info("Compatibility mode: " + getCompatibilityMode());
         if (isAtLeast(ServerVersion.V1_20_5)) {
             logger.info("Using modern particle/effect names (1.20.5+)");
@@ -132,6 +142,12 @@ public final class VersionAdapter {
         if (!isPaper) {
             logger.info("Paper events not available - using scheduler fallbacks");
         }
+    }
+    public String getServerTypeName() {
+        if (isFolia) {
+            return "Folia";
+        }
+        return isPaper ? "Paper" : "Spigot/Bukkit";
     }
     public String getCompatibilityMode() {
         if (version.isAtLeast(ServerVersion.V1_20_5)) {

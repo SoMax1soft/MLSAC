@@ -23,7 +23,6 @@
 
 package wtf.mlsac.scheduler;
 
-import org.bukkit.Bukkit;
 import org.bukkit.plugin.Plugin;
 
 public class SchedulerManager {
@@ -76,23 +75,16 @@ public class SchedulerManager {
     }
 
     private static ServerType detectServerType(Plugin plugin) {
-        String serverName = plugin.getServer().getName();
-        String version = plugin.getServer().getVersion();
-        if (!containsFoliaMarker(serverName) && !containsFoliaMarker(version)) {
-            return ServerType.BUKKIT;
-        }
-        try {
-            Class.forName("io.papermc.paper.threadedregions.scheduler.RegionScheduler");
-            Class.forName("io.papermc.paper.threadedregions.scheduler.GlobalRegionScheduler");
-            Class.forName("io.papermc.paper.threadedregions.scheduler.AsyncScheduler");
-            return ServerType.FOLIA;
-        } catch (Throwable e) {
-            return ServerType.BUKKIT;
-        }
+        return hasFoliaApi() ? ServerType.FOLIA : ServerType.BUKKIT;
     }
 
-    private static boolean containsFoliaMarker(String value) {
-        return value != null && value.toLowerCase().contains("folia");
+    public static boolean hasFoliaApi() {
+        try {
+            Class.forName("io.papermc.paper.threadedregions.RegionizedServer");
+            return true;
+        } catch (Throwable e) {
+            return false;
+        }
     }
 
     public static void reset() {
