@@ -22,9 +22,6 @@ detection:
   enabled: false # DONT FORGET TO TURN ON (enabled: true) <---
   
   # AI server endpoint (for HTTP mode use /api/v1 suffix)
-  # HTTP mode endpoints:
-  #   - https://api.mlsac.net/api/v1
-  #   - https://api.mlsac.wtf/api/v1
   endpoint: "https://api.mlsac.net"
   
   # API key for authentication
