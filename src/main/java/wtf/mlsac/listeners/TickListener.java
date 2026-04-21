@@ -8,6 +8,7 @@ import wtf.mlsac.session.ISessionManager;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import wtf.mlsac.data.AIPlayerData;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -56,11 +57,12 @@ public class TickListener {
             return;
         }
 
+        AIPlayerData data = aiCheck.getPlayerData(player.getUniqueId());
+        if (data != null && data.isBedrock()) return;
+
         try {
             ScheduledTask task = SchedulerManager.getAdapter().runEntitySyncRepeating(player, () -> {
-                if (aiCheck != null) {
-                    aiCheck.onTick(player);
-                }
+                aiCheck.onTick(player);
             }, 1L, 1L);
             playerTasks.put(player.getUniqueId(), task);
         } catch (Exception ignored) {

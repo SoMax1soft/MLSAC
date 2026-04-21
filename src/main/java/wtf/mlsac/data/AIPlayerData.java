@@ -51,6 +51,8 @@ public class AIPlayerData {
     private volatile boolean pendingRequest;
     private volatile boolean isBedrock;
     private volatile int highProbabilityDetections;
+    private final Deque<TickData> tickHistory = new ArrayDeque<>(5000);
+    private static final int MAX_TICK_HISTORY = 5000;
     private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
 
     public AIPlayerData(UUID playerId) {
@@ -71,9 +73,6 @@ public class AIPlayerData {
         this.buffer = 0.0;
         this.lastProbability = 0.0;
         this.pendingRequest = false;
-        this.buffer = 0.0;
-        this.lastProbability = 0.0;
-        this.pendingRequest = false;
         this.isBedrock = false;
         this.highProbabilityDetections = 0;
     }
@@ -86,6 +85,10 @@ public class AIPlayerData {
                 tickBuffer.pollFirst();
             }
             tickBuffer.addLast(tickData);
+            if (tickHistory.size() >= MAX_TICK_HISTORY) {
+                tickHistory.pollFirst();
+            }
+            tickHistory.addLast(tickData);
         } finally {
             lock.writeLock().unlock();
         }
@@ -131,19 +134,6 @@ public class AIPlayerData {
         }
     }
 
-    @Deprecated
-    public void onTick() {
-        lock.writeLock().lock();
-        try {
-            ticksSinceAttack++;
-            ticksStep++;
-            if (ticksSinceAttack > sequence) {
-                clearBuffer();
-            }
-        } finally {
-            lock.writeLock().unlock();
-        }
-    }
 
     public boolean shouldSendData(int step, int sequence) {
         lock.readLock().lock();
@@ -172,15 +162,6 @@ public class AIPlayerData {
         }
     }
 
-    @Deprecated
-    public boolean shouldSendData(int step) {
-        lock.readLock().lock();
-        try {
-            return ticksStep >= step && tickBuffer.size() >= sequence && ticksSinceAttack <= sequence;
-        } finally {
-            lock.readLock().unlock();
-        }
-    }
 
     public void resetStepCounter() {
         lock.writeLock().lock();
@@ -393,6 +374,15 @@ public class AIPlayerData {
 
     public void setBedrock(boolean bedrock) {
         this.isBedrock = bedrock;
+    }
+
+    public List<TickData> getTickHistory() {
+        lock.readLock().lock();
+        try {
+            return new ArrayList<>(tickHistory);
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     public int getHighProbabilityDetections() {

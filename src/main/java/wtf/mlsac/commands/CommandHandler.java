@@ -39,6 +39,7 @@ import wtf.mlsac.config.Config;
 import wtf.mlsac.config.Label;
 import wtf.mlsac.data.AIPlayerData;
 import wtf.mlsac.data.DataSession;
+import wtf.mlsac.data.TickData;
 import wtf.mlsac.scheduler.ScheduledTask;
 import wtf.mlsac.scheduler.SchedulerManager;
 import wtf.mlsac.session.ISessionManager;
@@ -62,6 +63,7 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
     private final AlertManager alertManager;
     private final AICheck aiCheck;
     private final Main plugin;
+    private final wtf.mlsac.datacollector.DataRestorer dataRestorer;
     private final Map<UUID, UUID> probTracking = new ConcurrentHashMap<>();
     private final Map<UUID, ScheduledTask> probTasks = new ConcurrentHashMap<>();
     private final Map<String, Long> reinstallConfirmations = new ConcurrentHashMap<>();
@@ -73,6 +75,7 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
         this.alertManager = alertManager;
         this.aiCheck = aiCheck;
         this.plugin = plugin;
+        this.dataRestorer = new wtf.mlsac.datacollector.DataRestorer(plugin);
     }
 
     private Config getConfig() {
@@ -114,13 +117,15 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
             case "datastatus":
                 return handleDataStatus(sender);
             case "kicklist":
-                return handleKickList(sender);
+                return handleKickList(sender, args);
             case "suspects":
                 return handleSuspects(sender);
             case "punish":
                 return handlePunish(sender, args);
             case "profile":
                 return handleProfile(sender, args);
+            case "falsepositive":
+                return handleFalsePositive(sender, args);
             default:
                 sender.sendMessage(getPrefix() + msg("unknown-command", "{ARGS}", args[0]));
                 sendUsage(sender);
@@ -279,23 +284,40 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
         return "console:" + sender.getName().toLowerCase();
     }
 
-    private boolean handleKickList(CommandSender sender) {
+    private boolean handleKickList(CommandSender sender, String[] args) {
         if (!sender.hasPermission(Permissions.ADMIN)) {
             sender.sendMessage(getPrefix() + msg("no-permission"));
             return true;
         }
         List<ViolationManager.KickRecord> kicks = plugin.getViolationManager().getKickHistory();
         if (kicks.isEmpty()) {
-            sender.sendMessage(getPrefix() + ColorUtil.colorize("&7Нет киков от AI античита"));
+            sender.sendMessage(getPrefix() + msg("kicklist-empty"));
             return true;
         }
-        sender.sendMessage(getPrefix() + ColorUtil.colorize("&6Последние кики от AI античита:"));
+
+        int page = 1;
+        if (args.length > 1) {
+            try {
+                page = Integer.parseInt(args[1]);
+            } catch (NumberFormatException ignored) {}
+        }
+
+        int pageSize = 10;
+        int maxPage = (int) Math.ceil((double) kicks.size() / pageSize);
+        if (page < 1) page = 1;
+        if (page > maxPage) page = maxPage;
+
+        sender.sendMessage(getPrefix() + msg("kicklist-header", "{PAGE}", String.valueOf(page), "{MAX_PAGE}", String.valueOf(maxPage)));
         sender.sendMessage(ColorUtil.colorize("&7─────────────────────────────────"));
-        int index = 1;
-        for (ViolationManager.KickRecord kick : kicks) {
+        
+        int start = (page - 1) * pageSize;
+        int end = Math.min(start + pageSize, kicks.size());
+        
+        for (int i = start; i < end; i++) {
+            ViolationManager.KickRecord kick = kicks.get(i);
             sender.sendMessage(ColorUtil.colorize(String.format(
                     "&e%d. &f%s &7[&c%s&7] &8- &bProb: &f%.2f &8| &bBuf: &f%.1f &8| &bVL: &f%d",
-                    index++,
+                    i + 1,
                     kick.getPlayerName(),
                     kick.getFormattedTime(),
                     kick.getProbability(),
@@ -303,6 +325,43 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
                     kick.getVl())));
         }
         sender.sendMessage(ColorUtil.colorize("&7─────────────────────────────────"));
+        if (page < maxPage) {
+            sender.sendMessage(getPrefix() + msg("kicklist-footer", "{NEXT_PAGE}", String.valueOf(page + 1)));
+        }
+        return true;
+    }
+
+    private boolean handleFalsePositive(CommandSender sender, String[] args) {
+        if (!sender.hasPermission(Permissions.ADMIN)) {
+            sender.sendMessage(getPrefix() + msg("no-permission"));
+            return true;
+        }
+        if (args.length < 3 || !args[1].equalsIgnoreCase("restore")) {
+            sender.sendMessage(getPrefix() + msg("falsepositive-usage"));
+            return true;
+        }
+
+        String targetName = args[2];
+        Player target = Bukkit.getPlayer(targetName);
+        if (target == null) {
+            sender.sendMessage(getPrefix() + msg("player-not-found", "{PLAYER}", targetName));
+            return true;
+        }
+
+        AIPlayerData data = aiCheck.getPlayerData(target.getUniqueId());
+        if (data == null) {
+            sender.sendMessage(getPrefix() + msg("falsepositive-no-data"));
+            return true;
+        }
+
+        List<TickData> history = data.getTickHistory();
+        boolean success = dataRestorer.restoreData(target.getName(), history);
+
+        if (success) {
+            sender.sendMessage(getPrefix() + msg("falsepositive-success"));
+        } else {
+            sender.sendMessage(getPrefix() + msg("falsepositive-fail"));
+        }
         return true;
     }
 
@@ -517,7 +576,8 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
         sender.sendMessage(msg("usage-profile"));
         sender.sendMessage(msg("usage-reload"));
         sender.sendMessage(ColorUtil.colorize("&7  /mlsac reinstall - Reinstall config and keep api-key + AI detection"));
-        sender.sendMessage(ColorUtil.colorize("&7  /mlsac kicklist - Последние 10 киков от AI античита"));
+        sender.sendMessage(ColorUtil.colorize("&7  /mlsac kicklist [page] - Список киков от AI античита"));
+        sender.sendMessage(ColorUtil.colorize("&7  /mlsac falsepositive restore <player> - Сохранить 5000 тиков игрока в CSV"));
     }
 
     @Override
@@ -534,9 +594,14 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
                 if (subCommand.equals("stop"))
                     targets.add("all");
                 completions.addAll(filterStartsWith(targets, args[1]));
+            } else if (subCommand.equals("falsepositive")) {
+                completions.add("restore");
             }
         } else if (args.length == 3) {
-            if (args[0].equalsIgnoreCase("start")) {
+            String subCommand = args[0].toLowerCase();
+            if (subCommand.equalsIgnoreCase("falsepositive") && args[1].equalsIgnoreCase("restore")) {
+                completions.addAll(filterStartsWith(getOnlinePlayerNames(), args[2]));
+            } else if (args[0].equalsIgnoreCase("start")) {
                 List<String> labels = Arrays.stream(Label.values())
                         .map(Label::name)
                         .collect(Collectors.toList());

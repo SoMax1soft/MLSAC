@@ -102,24 +102,20 @@ public class AICheck {
         if (!player.isValid()) {
             return;
         }
-        if (!player.isValid()) {
+
+        AIPlayerData data = getOrCreatePlayerData(player);
+        if (data.isBedrock()) {
+            plugin.debug("[AI] Skipping attack for " + player.getName() + " - Bedrock player detected");
             return;
         }
-        schedulerAdapter.runEntitySync(player, () -> {
-            AIPlayerData data = getOrCreatePlayerData(player);
-            if (data.isBedrock()) {
-                plugin.debug("[AI] Skipping attack for " + player.getName() + " - Bedrock player detected");
-                return;
-            }
-            if (!data.isInCombat()) {
-                data.clearBuffer();
-                data.getAimProcessor().reset();
-                plugin.debug("[AI] New combat started for " + player.getName() + ", cleared old data");
-            }
-            data.onAttack();
-            plugin.debug("[AI] Attack registered for " + player.getName() +
-                    ", buffer=" + data.getBufferSize() + "/" + sequence);
-        });
+        if (!data.isInCombat()) {
+            data.clearBuffer();
+            data.getAimProcessor().reset();
+            plugin.debug("[AI] New combat started for " + player.getName() + ", cleared old data");
+        }
+        data.onAttack();
+        plugin.debug("[AI] Attack registered for " + player.getName() +
+                ", buffer=" + data.getBufferSize() + "/" + sequence);
     }
 
     public void onTeleport(Player player) {
@@ -129,78 +125,58 @@ public class AICheck {
         if (!player.isValid()) {
             return;
         }
-        schedulerAdapter.runEntitySync(player, () -> {
-            AIPlayerData data = playerData.get(player.getUniqueId());
-            if (data != null) {
-                data.onTeleport();
-                plugin.debug("[AI] Teleport registered for " + player.getName() + ", resetting data");
-            }
-        });
+        AIPlayerData data = playerData.get(player.getUniqueId());
+        if (data != null) {
+            data.onTeleport();
+            plugin.debug("[AI] Teleport registered for " + player.getName() + ", resetting data");
+        }
     }
 
     public void onTick(Player player) {
-        if (!config.isAiEnabled()) {
+        if (!config.isAiEnabled() || !isClientAvailable() || !player.isValid()) {
             return;
         }
-        if (!isClientAvailable()) {
+
+        AIPlayerData data = getOrCreatePlayerData(player);
+        if (data.isBedrock())
             return;
-        }
-        if (!player.isValid()) {
-            return;
-        }
-        schedulerAdapter.runEntitySync(player, () -> {
-            AIPlayerData data = getOrCreatePlayerData(player);
-            if (data.isBedrock())
-                return;
-            data.incrementTicksSinceAttack();
-            if (data.getTicksSinceAttack() > sequence) {
-                if (!data.isPendingRequest() && data.getBufferSize() >= sequence) {
-                    plugin.debug("[AI] Combat ended for " + player.getName() +
-                            ", sending final buffer (" + data.getBufferSize() + " ticks)");
-                    data.setPendingRequest(true);
-                    sendDataToAI(player, data);
-                }
-                if (!data.isPendingRequest() && data.getTicksSinceAttack() > sequence * 2 && data.getBufferSize() > 0) {
-                    data.clearBuffer();
-                }
-                data.resetStepCounter();
-                return;
+
+        data.incrementTicksSinceAttack();
+        if (data.getTicksSinceAttack() > sequence) {
+            if (!data.isPendingRequest() && data.getBufferSize() >= sequence) {
+                plugin.debug("[AI] Combat ended for " + player.getName() +
+                        ", sending final buffer (" + data.getBufferSize() + " ticks)");
+                data.setPendingRequest(true);
+                sendDataToAI(player, data);
             }
-        });
+            if (!data.isPendingRequest() && data.getTicksSinceAttack() > sequence * 2 && data.getBufferSize() > 0) {
+                data.clearBuffer();
+            }
+            data.resetStepCounter();
+        }
     }
 
     public void onRotationPacket(Player player, float yaw, float pitch) {
-        if (!config.isAiEnabled()) {
+        if (!config.isAiEnabled() || !isClientAvailable() || !player.isValid()) {
             return;
         }
-        if (!isClientAvailable()) {
+
+        AIPlayerData data = playerData.get(player.getUniqueId());
+        if (data == null || !data.isInCombat() || data.isBedrock()) {
             return;
         }
-        if (!player.isValid()) {
+
+        if (worldGuardCompat.shouldBypassAICheck(player)) {
             return;
         }
-        schedulerAdapter.runEntitySync(player, () -> {
-            AIPlayerData data = playerData.get(player.getUniqueId());
-            if (data == null) {
-                return;
-            }
-            if (!data.isInCombat()) {
-                return;
-            }
-            if (worldGuardCompat.shouldBypassAICheck(player)) {
-                plugin.debug("[AI] Skipping rotation for " + player.getName() + " - in disabled WorldGuard region");
-                return;
-            }
-            if (data.isBedrock())
-                return;
-            data.processTick(yaw, pitch);
-            data.incrementStepCounter();
-            if (data.shouldSendData(step, sequence)) {
-                data.setPendingRequest(true);
-                sendDataToAI(player, data);
-                data.resetStepCounter();
-            }
-        });
+
+        data.processTick(yaw, pitch);
+        data.incrementStepCounter();
+        if (data.shouldSendData(step, sequence)) {
+            data.setPendingRequest(true);
+            sendDataToAI(player, data);
+            data.resetStepCounter();
+        }
     }
 
     private void sendDataToAI(Player player, AIPlayerData data) {
@@ -241,7 +217,7 @@ public class AICheck {
             final String playerName = player.getName();
             client.predict(serialized, playerUuid.toString(), playerName)
                     .subscribe(response -> {
-                        schedulerAdapter.runSync(() -> processResponse(playerUuid, playerName, data, response));
+                        processResponse(playerUuid, playerName, data, response);
                     }, error -> {
                         handleError(playerName, data, error);
                     });
@@ -257,47 +233,44 @@ public class AICheck {
     }
 
     private void processResponse(UUID playerUuid, String playerName, AIPlayerData data, AIResponse response) {
-        schedulerAdapter.runSync(() -> {
-            data.setPendingRequest(false);
-            data.clearBuffer();
-            if (response.getError() != null && response.getError().contains("INVALID_SEQUENCE")) {
-                handleInvalidSequence(response.getError());
-                return;
+        data.setPendingRequest(false);
+        data.clearBuffer();
+        if (response.getError() != null && response.getError().contains("INVALID_SEQUENCE")) {
+            handleInvalidSequence(response.getError());
+            return;
+        }
+        double probability = response.getProbability();
+        String modelName = response.getModel();
+        boolean isOnlyAlert = config.isOnlyAlertForModel(modelName);
+
+        plugin.debug("[AI] Response for " + playerName + ": probability=" +
+                String.format("%.3f", probability) + ", model=" + modelName +
+                ", onlyAlert=" + isOnlyAlert);
+
+        if (!isOnlyAlert) {
+            data.updateBuffer(probability, modelName, config.getAiBufferMultiplier(),
+                    config.getAiBufferDecrease(), config.getAiAlertThreshold());
+        } else {
+            plugin.debug("[AI] Only-alert mode for model " + modelName + ", skipping buffer/punishment");
+        }
+
+        if (alertManager.shouldAlert(probability)) {
+            alertManager.sendAlert(playerName, probability, data.getBuffer(), modelName);
+            Player player = Bukkit.getPlayer(playerUuid);
+            if (player != null && player.isOnline() && plugin.getDetectionResponseManager() != null) {
+                plugin.getDetectionResponseManager().registerDetection(player, probability);
             }
-            double probability = response.getProbability();
-            String modelName = response.getModel();
-            boolean isOnlyAlert = config.isOnlyAlertForModel(modelName);
+        }
 
-            plugin.debug("[AI] Response for " + playerName + ": probability=" +
-                    String.format("%.3f", probability) + ", model=" + modelName +
-                    ", onlyAlert=" + isOnlyAlert);
-
-            if (!isOnlyAlert) {
-                data.updateBuffer(probability, modelName, config.getAiBufferMultiplier(),
-                        config.getAiBufferDecrease(), config.getAiAlertThreshold());
+        if (!isOnlyAlert && data.shouldFlag(config.getAiBufferFlag())) {
+            Player player = Bukkit.getPlayer(playerUuid);
+            if (player != null && player.isOnline()) {
+                schedulerAdapter.runSync(() -> violationManager.handleFlag(player, probability, data.getBuffer()));
             } else {
-                plugin.debug("[AI] Only-alert mode for model " + modelName + ", skipping buffer/punishment");
+                logger.warning("[AI] Player " + playerName + " went offline before punishment");
             }
-
-            if (alertManager.shouldAlert(probability)) {
-                alertManager.sendAlert(playerName, probability, data.getBuffer(), modelName);
-                Player player = Bukkit.getPlayer(playerUuid);
-                if (player != null && player.isOnline() && plugin.getDetectionResponseManager() != null) {
-                    plugin.getDetectionResponseManager().registerDetection(player, probability);
-                }
-            }
-
-            if (!isOnlyAlert && data.shouldFlag(config.getAiBufferFlag())) {
-                Player player = Bukkit.getPlayer(playerUuid);
-                if (player != null && player.isOnline()) {
-                    violationManager.handleFlag(player, probability, data.getBuffer());
-                } else {
-                    logger.warning("[AI] Player " + playerName + " went offline before punishment");
-                }
-                data.resetBuffer(config.getAiBufferResetOnFlag());
-            }
-        });
-
+            data.resetBuffer(config.getAiBufferResetOnFlag());
+        }
     }
 
     private void handleInvalidSequence(String error) {

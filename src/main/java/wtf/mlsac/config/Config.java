@@ -114,7 +114,7 @@ public class Config {
     public static final boolean DEFAULT_AUTOSTART_ENABLED = false;
     public static final String DEFAULT_AUTOSTART_LABEL = "UNLABELED";
     public static final String DEFAULT_AUTOSTART_COMMENT = "";
-    public static final String DEFAULT_SERVER_ADDRESS = "https://api.mlsac.wtf";
+    public static final String DEFAULT_SERVER_ADDRESS = "https://api.mlsac.net/api/v1";
     public static final int DEFAULT_REPORT_STATS_INTERVAL_SECONDS = 30;
     public static final boolean DEFAULT_VL_DECAY_ENABLED = true;
     public static final int DEFAULT_VL_DECAY_INTERVAL_SECONDS = 60;
@@ -575,23 +575,38 @@ public class Config {
     }
 
     public String getServerHost() {
-        int colonIndex = serverAddress.lastIndexOf(':');
-        if (colonIndex > 0) {
-            return serverAddress.substring(0, colonIndex);
+        try {
+            java.net.URI uri = new java.net.URI(serverAddress);
+            return uri.getHost();
+        } catch (Exception e) {
+            int colonIndex = serverAddress.lastIndexOf(':');
+            if (colonIndex > 0) {
+                return serverAddress.substring(0, colonIndex);
+            }
+            return serverAddress;
         }
-        return serverAddress;
     }
 
     public int getServerPort() {
+        try {
+            java.net.URI uri = new java.net.URI(serverAddress);
+            int port = uri.getPort();
+            if (port > 0) return port;
+        } catch (Exception e) {}
         int colonIndex = serverAddress.lastIndexOf(':');
         if (colonIndex > 0 && colonIndex < serverAddress.length() - 1) {
             try {
-                return Integer.parseInt(serverAddress.substring(colonIndex + 1));
+                String portStr = serverAddress.substring(colonIndex + 1);
+                int slashIndex = portStr.indexOf('/');
+                if (slashIndex > 0) {
+                    portStr = portStr.substring(0, slashIndex);
+                }
+                return Integer.parseInt(portStr);
             } catch (NumberFormatException e) {
-                return 5000;
+                return 443;
             }
         }
-        return 5000;
+        return 443;
     }
 
     public boolean isVlDecayEnabled() {

@@ -1,31 +1,54 @@
-# Configuration for Suspect Nametags
+# ╔═══════════════════════════════════════════════════════════════════════════════╗
+# ║                         MLSAC Hologram Configuration                          ║
+# ╚═══════════════════════════════════════════════════════════════════════════════╝
+
+# ┌───────────────────────────────────────────────────────────────────────────────┐
+# │                               HOLOGRAМ GUIDE                                  │
+# ├───────────────────────────────────────────────────────────────────────────────┤
+# │ РЕЖИМЫ (mode):                                                                │
+# │ 1. NAMETAG - Классические голограммы через скорборд (Team Prefix/Suffix).     │
+# │    + Совместимо со всеми версиями.                                            │
+# │    - Могут конфликтовать с другими плагинами на таб/ники.                     │
+# │                                                                               │
+# │ 2. PACKET - Инновационный метод через пакеты (виртуальные сущности).          │
+# │    + Не имеют хитбокса (прохождение ударов сквозь текст на 100%).             │
+# │    + Не нагружают сервер (сущности существуют только у персонала).            │
+# │    + Плавное следование за игроком.                                           │
+# │    - Рекомендуется версия сервера 1.19.4+ для лучшего качества (TextDisplay). │
+# │                                                                               │
+# │ ПОЗИЦИЯ (position):                                                           │
+# │ ABOVE_NAME - Над головой игрока (лучший обзор для персонала).                 │
+# │ BELOW_NAME - Под ногами (меньше перекрывает обзор в PvP).                     │
+# └───────────────────────────────────────────────────────────────────────────────┘
+
 nametags:
+  # General toggle for suspect monitoring holograms
   enabled: true
-  position: "BELOW_NAME" # ABOVE_NAME | BELOW_NAME
+
+  # Режим работы (NAMETAG или PACKET)
+  mode: "NAMETAG"
+
+  # Позиция (ABOVE_NAME или BELOW_NAME)
+  position: "BELOW_NAME"
+
+  # Default format for the hologram text
+  # Placeholders: {AVG} - average probability, {RESULT} - last probability, {HISTORY} - colored last probability
   format: '&6▶AVG &f&l{AVG}% &7| {HISTORY}'
+  
+  # Formats used depending on position
   above-name-format: '&6▶AVG &f&l{AVG}% &7| {HISTORY}'
   below-name-format: '&6▶AVG &f&l{AVG}% &7| {HISTORY}'
   below-name-title: ''
-  fast-format: '&2F&f{RESULT}%'
-  pro-format: '&6P&f{RESULT}%'
-  ultra-format: '&cU&f{RESULT}%'
-  history-limit: 8
+  
+  # Frequency of updates (in ticks)
   update-interval-ticks: 10
+  
+  # Max distance to see suspect holograms
   view-distance: 64
-  fallback:
-    avg: '--'
-    last: '--'
-    fast: '--'
-    pro: '--'
-    ultra: '--'
-    history: '-'
-    buffer: '--'
+
+  # Thresholds for probability coloring in {HISTORY}
+  # medium (yellow), high (red), critical (dark red), critical_bold (bold dark red)
   colors:
-    low: '&f'
-    medium: '&f'
-    high: '&c'
-    critical: '&c'
-    critical_bold: '&4'
     thresholds:
       medium: 0.5
       high: 0.6

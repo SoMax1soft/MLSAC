@@ -74,6 +74,7 @@ public final class Main extends JavaPlugin {
     private AlertManager alertManager;
     private ViolationManager violationManager;
     private NametagManager nametagManager;
+    private wtf.mlsac.hologram.PacketHologramManager packetHologramManager;
     private AICheck aiCheck;
     private UpdateChecker updateChecker;
     private AnalyticsClient analyticsClient;
@@ -143,14 +144,21 @@ public final class Main extends JavaPlugin {
         this.detectionResponseManager = new DetectionResponseManager(this, config);
 
         this.nametagManager = new NametagManager(this, aiCheck);
-        this.nametagManager.start();
+        this.packetHologramManager = new wtf.mlsac.hologram.PacketHologramManager(this, aiCheck);
+        
+        String holoMode = hologramConfig.getConfig().getString("nametags.mode", "NAMETAG");
+        if (holoMode.equalsIgnoreCase("PACKET")) {
+            this.packetHologramManager.start();
+        } else {
+            this.nametagManager.start();
+        }
 
         if (config.isAiEnabled()) {
             aiClientProvider.initialize().thenAccept(success -> {
                 if (success) {
-                    getLogger().info("SignalR: Connected to " + config.getServerAddress());
+                    getLogger().info(aiClientProvider.getClientType() + ": Connected to " + config.getServerAddress());
                 } else {
-                    getLogger().warning("SignalR: Failed to connect to InferenceServer");
+                    getLogger().warning(aiClientProvider.getClientType() + ": Failed to connect to InferenceServer");
                 }
             });
         }
@@ -208,6 +216,9 @@ public final class Main extends JavaPlugin {
         if (nametagManager != null) {
             nametagManager.stop();
         }
+        if (packetHologramManager != null) {
+            packetHologramManager.stop();
+        }
         if (sessionManager != null) {
             getLogger().info("Stopping all active sessions...");
             sessionManager.stopAllSessions();
@@ -219,14 +230,14 @@ public final class Main extends JavaPlugin {
             commandHandler.cleanup();
         }
         if (aiClientProvider != null) {
-            getLogger().info("Shutting down SignalR client...");
+            getLogger().info("Shutting down HTTP client...");
             try {
                 aiClientProvider.shutdown().get(5, java.util.concurrent.TimeUnit.SECONDS);
             } catch (Exception e) {
                 if (e.getMessage() != null) {
-                    getLogger().warning("Error shutting down SignalR client: " + e.getMessage());
+                    getLogger().warning("Error shutting down HTTP client: " + e.getMessage());
                 } else {
-                    getLogger().warning("Error shutting down SignalR client during disable:");
+                    getLogger().warning("Error shutting down HTTP client during disable:");
                     e.printStackTrace();
                 }
             }
@@ -254,6 +265,15 @@ public final class Main extends JavaPlugin {
 
                 if (nametagManager != null) {
                     nametagManager.stop();
+                }
+                if (packetHologramManager != null) {
+                    packetHologramManager.stop();
+                }
+
+                String holoMode = hologramConfig.getConfig().getString("nametags.mode", "NAMETAG");
+                if (holoMode.equalsIgnoreCase("PACKET")) {
+                    packetHologramManager.start();
+                } else {
                     nametagManager.start();
                 }
 
@@ -268,7 +288,7 @@ public final class Main extends JavaPlugin {
                     if (config.isAiEnabled()) {
                         aiClientProvider.reload().thenAccept(success -> {
                             if (success) {
-                                getLogger().info("SignalR: Reconnected to " + config.getServerAddress());
+                                getLogger().info(aiClientProvider.getClientType() + ": Reconnected to " + config.getServerAddress());
                             }
                         });
                     } else {

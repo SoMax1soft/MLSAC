@@ -26,7 +26,6 @@ package wtf.mlsac.server;
 import org.bukkit.Bukkit;
 import wtf.mlsac.Main;
 import wtf.mlsac.config.Config;
-import wtf.mlsac.signalr.SignalRClient;
 import java.util.concurrent.CompletableFuture;
 import java.util.logging.Logger;
 
@@ -45,6 +44,10 @@ public class AIClientProvider {
     }
 
     public CompletableFuture<Boolean> initialize() {
+        return initialize(true);
+    }
+
+    public CompletableFuture<Boolean> initialize(boolean checkHttpMode) {
         if (!config.isAiEnabled()) {
             plugin.debug("[AI] AI is disabled, skipping client initialization");
             return CompletableFuture.completedFuture(false);
@@ -64,37 +67,34 @@ public class AIClientProvider {
             }
 
             connecting = true;
-            return initializeSignalR(serverAddress, apiKey);
+
+            return initializeHttpClient(serverAddress, apiKey);
         });
     }
 
-    private CompletableFuture<Boolean> initializeSignalR(String serverAddress, String apiKey) {
-        SignalRClient signalRClient = new SignalRClient(
+    private CompletableFuture<Boolean> initializeHttpClient(String serverAddress, String apiKey) {
+        HttpAIClient httpClient = new HttpAIClient(
                 plugin,
                 serverAddress,
                 apiKey,
-                config.getReportStatsIntervalSeconds(),
                 () -> Bukkit.getOnlinePlayers().size(),
                 config.isDebug());
-        this.currentClient = signalRClient;
-        this.clientType = "SignalR";
-        logger.info("[SignalR] Connecting to " + serverAddress + "...");
-        return signalRClient.connectWithRetry()
+        this.currentClient = httpClient;
+        this.clientType = "HTTP";
+        logger.info("[HTTP] Connecting to " + serverAddress + "...");
+        return httpClient.connectWithRetry()
                 .thenApply(success -> {
                     connecting = false;
                     if (success) {
-                        logger.info("[SignalR] Successfully connected to InferenceServer");
+                        logger.info("[HTTP] Successfully connected to InferenceServer");
                     } else {
-                        logger.warning("[SignalR] Failed to connect to InferenceServer after retries");
-                        // Keep currentClient so it can be shut down by the next initialize() or
-                        // shutdown() call
+                        logger.warning("[HTTP] Failed to connect to InferenceServer after retries");
                     }
                     return success;
                 })
                 .exceptionally(e -> {
                     connecting = false;
-                    logger.severe("[SignalR] Connection error: " + e.getMessage());
-                    // Keep currentClient so it can be shut down
+                    logger.severe("[HTTP] Connection error: " + e.getMessage());
                     return false;
                 });
     }
