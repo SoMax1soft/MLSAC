@@ -7,13 +7,15 @@
 <p align="center">
   🚀 <b>MLSAC</b> is a modern, fast, and intelligent anti-cheat for Minecraft servers.  
   <br/>
-  🧠 Built around behavioral analysis rather than just mathematically based checks.
+  🧠 Built around behavioral analysis rather than just mathematically based checks.  
+  <br/>
+  🌐 This is the <b>official repository</b> of the <b>MLSAC.NET</b> project.
 </p>
 
 <p align="center">
-  <a href="https://github.com/MLSAC/client-side/issues">Report Bug</a>
+  <a href="https://github.com/SoMax1soft/MLSAC/issues">Report Bug</a>
   ·
-  <a href="https://github.com/MLSAC/client-side/issues">Request Feature</a>
+  <a href="https://github.com/SoMax1soft/MLSAC/issues">Request Feature</a>
   ·
   <a href="https://discord.gg/ARVNGSTWeg">Discord</a>
 </p>
@@ -25,6 +27,13 @@
 </p>
 
 </div>
+
+---
+
+## 🌐 Official Repository
+
+This repository contains the official source code for the **MLSAC.NET** anti-cheat project.  
+All official updates, releases, and issue tracking are maintained here.
 
 ---
 
@@ -48,4 +57,4 @@
 ## 📥 Downloads
 
 Official builds are available via  
-👉 **[GitHub Releases](https://github.com/MLSAC/client-side/releases)**
+👉 **[GitHub Releases](https://github.com/SoMax1soft/MLSAC/releases)**
