@@ -194,7 +194,7 @@ public final class Main extends JavaPlugin {
             if (available) {
                 getLogger().warning("=================================================");
                 getLogger().warning("A NEW UPDATE IS AVAILABLE: " + updateChecker.getLatestVersion());
-                getLogger().warning("Get it from GitHub: https://github.com/MLSAC/client-side/releases");
+                getLogger().warning("Get it from GitHub: https://github.com/SoMax1soft/MLSAC/releases");
                 getLogger().warning("=================================================");
             }
         });
@@ -270,7 +270,8 @@ public final class Main extends JavaPlugin {
                     if (config.isAiEnabled()) {
                         aiClientProvider.reload().thenAccept(success -> {
                             if (success) {
-                                getLogger().info(aiClientProvider.getClientType() + ": Reconnected to " + config.getServerAddress());
+                                getLogger().info(aiClientProvider.getClientType() + ": Reconnected to "
+                                        + config.getServerAddress());
                             }
                         });
                     } else {
@@ -316,7 +317,8 @@ public final class Main extends JavaPlugin {
             }
 
             reloadPluginConfig();
-            getLogger().info("All configuration YAML files were reinstalled. API key and AI detection state were preserved.");
+            getLogger().info(
+                    "All configuration YAML files were reinstalled. API key and AI detection state were preserved.");
             return true;
         } catch (Exception e) {
             getLogger().severe("Failed to reinstall configuration: " + e.getMessage());

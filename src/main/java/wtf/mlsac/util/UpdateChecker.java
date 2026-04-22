@@ -10,9 +10,9 @@ import java.util.concurrent.CompletableFuture;
 import java.util.logging.Level;
 
 public class UpdateChecker {
-    private static final String REPO = "MLSAC/client-side";
+    private static final String REPO = "SoMax1soft/MLSAC";
     private static final String API_URL = "https://api.github.com/repos/" + REPO + "/releases/latest";
-    
+
     private final JavaPlugin plugin;
     private final String currentVersion;
     private String latestVersion;
@@ -31,12 +31,12 @@ public class UpdateChecker {
                 connection.setRequestMethod("GET");
                 connection.setRequestProperty("Accept", "application/json");
                 connection.setRequestProperty("User-Agent", "MLSAC-UpdateChecker");
-                
+
                 if (connection.getResponseCode() == 200) {
                     try (InputStreamReader reader = new InputStreamReader(connection.getInputStream())) {
                         JsonObject json = JsonParser.parseReader(reader).getAsJsonObject();
                         this.latestVersion = json.get("tag_name").getAsString();
-                        
+
                         if (!currentVersion.equals(latestVersion)) {
                             if (!currentVersion.contains("dev")) {
                                 this.updateAvailable = true;

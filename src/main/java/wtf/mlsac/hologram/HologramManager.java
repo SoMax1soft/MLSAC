@@ -9,6 +9,7 @@ import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerDe
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityMetadata;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityTeleport;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerSpawnEntity;
+import net.kyori.adventure.text.serializer.gson.GsonComponentSerializer;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -27,6 +28,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class HologramManager {
     private static final LegacyComponentSerializer LEGACY_SERIALIZER = LegacyComponentSerializer.legacyAmpersand();
+    private static final GsonComponentSerializer GSON_SERIALIZER = GsonComponentSerializer.gson();
     private static final int ENTITY_ID_START = 42000000;
 
     private final Main plugin;
@@ -153,7 +155,7 @@ public class HologramManager {
 
         List<EntityData<?>> meta = new ArrayList<>();
         meta.add(new EntityData(0, EntityDataTypes.BYTE, (byte) 0x20));
-        meta.add(new EntityData(2, EntityDataTypes.OPTIONAL_COMPONENT, Optional.of(LEGACY_SERIALIZER.deserialize(text))));
+        meta.add(new EntityData(2, EntityDataTypes.OPTIONAL_COMPONENT, Optional.of(GSON_SERIALIZER.serialize(LEGACY_SERIALIZER.deserialize(text)))));
         meta.add(new EntityData(3, EntityDataTypes.BOOLEAN, true));
         meta.add(new EntityData(15, EntityDataTypes.BYTE, (byte) 0x10));
         PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, new WrapperPlayServerEntityMetadata(entityId, meta));
@@ -166,7 +168,7 @@ public class HologramManager {
 
     private void updateText(Player viewer, int entityId, String text) {
         List<EntityData<?>> meta = new ArrayList<>();
-        meta.add(new EntityData(2, EntityDataTypes.OPTIONAL_COMPONENT, Optional.of(LEGACY_SERIALIZER.deserialize(text))));
+        meta.add(new EntityData(2, EntityDataTypes.OPTIONAL_COMPONENT, Optional.of(GSON_SERIALIZER.serialize(LEGACY_SERIALIZER.deserialize(text)))));
         PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, new WrapperPlayServerEntityMetadata(entityId, meta));
     }
 
