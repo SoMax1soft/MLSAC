@@ -4,7 +4,10 @@
       "Bash(./gradlew compileJava)",
       "Bash(./gradlew shadowJar)",
       "Bash(git remote *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(./gradlew build *)",
+      "Bash(git add *)",
+      "Bash(git commit -m 'perf: replace NametagManager+PacketHologramManager with optimized single HologramManager *)"
     ]
   }
 }

@@ -3,50 +3,30 @@
 # ╚═══════════════════════════════════════════════════════════════════════════════╝
 
 # ┌───────────────────────────────────────────────────────────────────────────────┐
-# │                               HOLOGRAМ GUIDE                                  │
+# │                               HOLOGRAM GUIDE                                  │
 # ├───────────────────────────────────────────────────────────────────────────────┤
-# │ РЕЖИМЫ (mode):                                                                │
-# │ 1. NAMETAG - Классические голограммы через скорборд (Team Prefix/Suffix).     │
-# │    + Совместимо со всеми версиями.                                            │
-# │    - Могут конфликтовать с другими плагинами на таб/ники.                     │
+# │ Holograms display AI probability above player heads for staff.                │
+# │ Uses optimized packet-based ArmorStands (entities only exist for staff).    │
 # │                                                                               │
-# │ 2. PACKET - Инновационный метод через пакеты (виртуальные сущности).          │
-# │    + Не имеют хитбокса (прохождение ударов сквозь текст на 100%).             │
-# │    + Не нагружают сервер (сущности существуют только у персонала).            │
-# │    + Плавное следование за игроком.                                           │
-# │    - Рекомендуется версия сервера 1.19.4+ для лучшего качества (TextDisplay). │
-# │                                                                               │
-# │ ПОЗИЦИЯ (position):                                                           │
-# │ ABOVE_NAME - Над головой игрока (лучший обзор для персонала).                 │
-# │ BELOW_NAME - Под ногами (меньше перекрывает обзор в PvP).                     │
+# │ UPDATE INTERVAL: How often (in ticks) to update hologram positions/text.     │
+# │ VIEW DISTANCE: Max distance (in blocks) for staff to see holograms.         │
 # └───────────────────────────────────────────────────────────────────────────────┘
 
 nametags:
   # General toggle for suspect monitoring holograms
   enabled: true
 
-  # Режим работы (NAMETAG или PACKET)
-  mode: "NAMETAG"
+  # How often to update holograms (in ticks). 20 = 1 second
+  update-interval-ticks: 20
 
-  # Позиция (ABOVE_NAME или BELOW_NAME)
-  position: "BELOW_NAME"
+  # Max distance to see suspect holograms
+  view-distance: 40
 
   # Default format for the hologram text
-  # Placeholders: {AVG} - average probability, {RESULT} - last probability, {HISTORY} - colored last probability
-  format: '&6▶AVG &f&l{AVG}% &7| {HISTORY}'
-  
-  # Formats used depending on position
-  above-name-format: '&6▶AVG &f&l{AVG}% &7| {HISTORY}'
-  below-name-format: '&6▶AVG &f&l{AVG}% &7| {HISTORY}'
-  below-name-title: ''
-  
-  # Frequency of updates (in ticks)
-  update-interval-ticks: 10
-  
-  # Max distance to see suspect holograms
-  view-distance: 64
+  # Placeholders: {AVG} - average probability, {HIST} - colored last probability
+  format: '&6AVG &f{AVG}% &7| {HIST}'
 
-  # Thresholds for probability coloring in {HISTORY}
+  # Thresholds for probability coloring
   # medium (yellow), high (red), critical (dark red), critical_bold (bold dark red)
   colors:
     thresholds:

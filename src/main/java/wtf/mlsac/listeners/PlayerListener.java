@@ -51,14 +51,14 @@ public class PlayerListener implements Listener {
     private final ViolationManager violationManager;
     private final SessionManager sessionManager;
     private final TickListener tickListener;
-    private final wtf.mlsac.hologram.NametagManager nametagManager;
+    private final wtf.mlsac.hologram.HologramManager hologramManager;
     private final RotationListener rotationListener;
     private final AnalyticsClient analyticsClient;
     private HitListener hitListener;
 
     public PlayerListener(JavaPlugin plugin, AICheck aiCheck, AlertManager alertManager,
             ViolationManager violationManager, SessionManager sessionManager,
-            TickListener tickListener, wtf.mlsac.hologram.NametagManager nametagManager,
+            TickListener tickListener, wtf.mlsac.hologram.HologramManager hologramManager,
             RotationListener rotationListener,
             AnalyticsClient analyticsClient) {
         this.plugin = plugin;
@@ -67,7 +67,7 @@ public class PlayerListener implements Listener {
         this.violationManager = violationManager;
         this.sessionManager = sessionManager;
         this.tickListener = tickListener;
-        this.nametagManager = nametagManager;
+        this.hologramManager = hologramManager;
         this.rotationListener = rotationListener;
         this.analyticsClient = analyticsClient;
     }
@@ -183,8 +183,8 @@ public class PlayerListener implements Listener {
         if (sessionManager != null) {
             sessionManager.removeAimProcessor(player.getUniqueId());
         }
-        if (nametagManager != null) {
-            nametagManager.handlePlayerQuit(player);
+        if (hologramManager != null) {
+            hologramManager.handleQuit(player);
         }
     }
 }

@@ -16,16 +16,13 @@ import java.util.concurrent.ConcurrentHashMap;
 public class TickListener {
     private final ISessionManager sessionManager;
     private final AICheck aiCheck;
-    private final wtf.mlsac.hologram.NametagManager nametagManager;
     private final EventCompat.TickHandler tickHandler;
     private final Map<UUID, ScheduledTask> playerTasks = new ConcurrentHashMap<>();
     private HitListener hitListener;
 
-    public TickListener(JavaPlugin plugin, ISessionManager sessionManager, AICheck aiCheck,
-            wtf.mlsac.hologram.NametagManager nametagManager) {
+    public TickListener(JavaPlugin plugin, ISessionManager sessionManager, AICheck aiCheck) {
         this.sessionManager = sessionManager;
         this.aiCheck = aiCheck;
-        this.nametagManager = nametagManager;
         this.tickHandler = EventCompat.createTickHandler(plugin, this::onTick);
     }
 

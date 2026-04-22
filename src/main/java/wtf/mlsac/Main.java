@@ -35,7 +35,7 @@ import wtf.mlsac.config.HologramConfig;
 import wtf.mlsac.config.MenuConfig;
 import wtf.mlsac.config.MessagesConfig;
 import wtf.mlsac.datacollector.DataCollectorFactory;
-import wtf.mlsac.hologram.NametagManager;
+import wtf.mlsac.hologram.HologramManager;
 import wtf.mlsac.listeners.HitListener;
 import wtf.mlsac.listeners.PlayerListener;
 import wtf.mlsac.listeners.RotationListener;
@@ -73,8 +73,7 @@ public final class Main extends JavaPlugin {
     private AIClientProvider aiClientProvider;
     private AlertManager alertManager;
     private ViolationManager violationManager;
-    private NametagManager nametagManager;
-    private wtf.mlsac.hologram.PacketHologramManager packetHologramManager;
+    private HologramManager hologramManager;
     private AICheck aiCheck;
     private UpdateChecker updateChecker;
     private AnalyticsClient analyticsClient;
@@ -143,15 +142,8 @@ public final class Main extends JavaPlugin {
         this.violationManager.setAICheck(aiCheck);
         this.detectionResponseManager = new DetectionResponseManager(this, config);
 
-        this.nametagManager = new NametagManager(this, aiCheck);
-        this.packetHologramManager = new wtf.mlsac.hologram.PacketHologramManager(this, aiCheck);
-        
-        String holoMode = hologramConfig.getConfig().getString("nametags.mode", "NAMETAG");
-        if (holoMode.equalsIgnoreCase("PACKET")) {
-            this.packetHologramManager.start();
-        } else {
-            this.nametagManager.start();
-        }
+        this.hologramManager = new HologramManager(this, aiCheck);
+        this.hologramManager.start();
 
         if (config.isAiEnabled()) {
             aiClientProvider.initialize().thenAccept(success -> {
@@ -162,13 +154,13 @@ public final class Main extends JavaPlugin {
                 }
             });
         }
-        this.tickListener = new TickListener(this, sessionManager, aiCheck, nametagManager);
+        this.tickListener = new TickListener(this, sessionManager, aiCheck);
         this.hitListener = new HitListener(sessionManager, aiCheck);
         this.rotationListener = new RotationListener(sessionManager, aiCheck);
         this.analyticsClient = new AnalyticsClient(config.getServerAddress(), getLogger());
         this.playerListener = new PlayerListener(this, aiCheck, alertManager, violationManager,
                 sessionManager instanceof SessionManager ? (SessionManager) sessionManager : null, tickListener,
-                nametagManager, rotationListener, analyticsClient);
+                hologramManager, rotationListener, analyticsClient);
         this.teleportListener = new TeleportListener(aiCheck);
         this.combatPenaltyListener = new CombatPenaltyListener(detectionResponseManager);
         this.tickListener.setHitListener(hitListener);
@@ -213,11 +205,8 @@ public final class Main extends JavaPlugin {
         if (tickListener != null) {
             tickListener.stop();
         }
-        if (nametagManager != null) {
-            nametagManager.stop();
-        }
-        if (packetHologramManager != null) {
-            packetHologramManager.stop();
+        if (hologramManager != null) {
+            hologramManager.stop();
         }
         if (sessionManager != null) {
             getLogger().info("Stopping all active sessions...");
@@ -263,19 +252,12 @@ public final class Main extends JavaPlugin {
                 if (hologramConfig != null)
                     hologramConfig.reload();
 
-                if (nametagManager != null) {
-                    nametagManager.stop();
-                }
-                if (packetHologramManager != null) {
-                    packetHologramManager.stop();
+                if (hologramManager != null) {
+                    hologramManager.stop();
                 }
 
-                String holoMode = hologramConfig.getConfig().getString("nametags.mode", "NAMETAG");
-                if (holoMode.equalsIgnoreCase("PACKET")) {
-                    packetHologramManager.start();
-                } else {
-                    nametagManager.start();
-                }
+                hologramManager = new HologramManager(this, aiCheck);
+                hologramManager.start();
 
                 alertManager.setConfig(config);
                 violationManager.setConfig(config);
@@ -370,8 +352,8 @@ public final class Main extends JavaPlugin {
         return hologramConfig;
     }
 
-    public NametagManager getNametagManager() {
-        return nametagManager;
+    public HologramManager getHologramManager() {
+        return hologramManager;
     }
 
     public Config getPluginConfig() {
