@@ -38,6 +38,8 @@ public interface IAIClient {
 
     boolean isLimitExceeded();
 
+    boolean isServerErrorState();
+
     String getSessionId();
 
     String getServerAddress();

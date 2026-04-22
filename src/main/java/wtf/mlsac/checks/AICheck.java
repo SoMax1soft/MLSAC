@@ -229,7 +229,7 @@ public class AICheck {
     }
 
     private boolean isClientAvailable() {
-        return clientProvider != null && clientProvider.isAvailable();
+        return clientProvider != null && clientProvider.isAvailable() && !clientProvider.isServerErrorState();
     }
 
     private void processResponse(UUID playerUuid, String playerName, AIPlayerData data, AIResponse response) {

@@ -44,6 +44,7 @@ public class HttpAIClient implements IAIClient {
     private static final int CONNECT_TIMEOUT_SECONDS = 10;
     private static final int READ_TIMEOUT_SECONDS = 30;
     private static final int WRITE_TIMEOUT_SECONDS = 30;
+    private static final long PERIODIC_CHECK_INTERVAL_MS = 60000;
 
     private final JavaPlugin plugin;
     private final String serverAddress;
@@ -55,11 +56,16 @@ public class HttpAIClient implements IAIClient {
     private final OkHttpClient httpClient;
     private final AtomicReference<ScheduledTask> heartbeatTask = new AtomicReference<>();
     private final AtomicReference<ScheduledTask> reportStatsTask = new AtomicReference<>();
+    private final AtomicReference<ScheduledTask> periodicCheckTask = new AtomicReference<>();
+    private final AtomicReference<ScheduledTask> reconnectTask = new AtomicReference<>();
     private final AtomicBoolean connected = new AtomicBoolean(false);
     private final AtomicBoolean shuttingDown = new AtomicBoolean(false);
     private volatile boolean autoReconnectEnabled = true;
     private volatile String sessionId = null;
     private volatile boolean limitExceeded = false;
+    private volatile boolean serverErrorState = false;
+    private volatile long lastServerErrorTime = 0;
+    private static final long SERVER_ERROR_SILENCE_MS = 60000;
 
     public HttpAIClient(JavaPlugin plugin, String serverAddress, String apiKey,
                         IntSupplier onlinePlayersSupplier, boolean debug) {
@@ -133,6 +139,7 @@ public class HttpAIClient implements IAIClient {
 
                 startHeartbeat();
                 startReportStats();
+                startPeriodicCheck();
 
                 return true;
             } catch (Exception e) {
@@ -192,9 +199,15 @@ public class HttpAIClient implements IAIClient {
         if (hb != null) hb.cancel();
         ScheduledTask rs = reportStatsTask.getAndSet(null);
         if (rs != null) rs.cancel();
+        ScheduledTask pc = periodicCheckTask.getAndSet(null);
+        if (pc != null) pc.cancel();
+        ScheduledTask rt = reconnectTask.getAndSet(null);
+        if (rt != null) rt.cancel();
 
         connected.set(false);
         sessionId = null;
+        limitExceeded = false;
+        serverErrorState = false;
 
         return CompletableFuture.runAsync(() -> {
             httpExecutor.execute(() -> {
@@ -237,11 +250,15 @@ public class HttpAIClient implements IAIClient {
                         .build();
 
                 try (Response response = httpClient.newCall(request).execute()) {
+                    int code = response.code();
                     if (!response.isSuccessful()) {
-                        if (debug) logger.warning("[HTTP] Heartbeat failed: " + response.code());
-                        if (response.code() == 401 || response.code() == 403) {
+                        if (debug) logger.warning("[HTTP] Heartbeat failed: " + code);
+                        if (code == 401 || code == 403) {
                             logger.severe("[HTTP] Authentication failed! API key is invalid, expired, or corrupted. Please check your API key in config.yml");
                             scheduleReconnect();
+                        } else if (code >= 500) {
+                            logger.warning("[HTTP] Heartbeat received server error " + code);
+                            enterServerErrorState("Heartbeat received HTTP " + code);
                         }
                     }
                 }
@@ -261,6 +278,33 @@ public class HttpAIClient implements IAIClient {
         }, 100, REPORT_STATS_INTERVAL_MS / 50));
     }
 
+    private void startPeriodicCheck() {
+        ScheduledTask existing = periodicCheckTask.get();
+        if (existing != null) existing.cancel();
+
+        periodicCheckTask.set(SchedulerManager.getAdapter().runAsyncRepeating(() -> {
+            if (shuttingDown.get() || !autoReconnectEnabled) return;
+            performPeriodicCheck();
+        }, 100, PERIODIC_CHECK_INTERVAL_MS / 50));
+    }
+
+    private void performPeriodicCheck() {
+        if (debug) logger.info("[HTTP] Periodic check running...");
+        if (isServerInErrorState()) {
+            if (debug) logger.info("[HTTP] Still in server error state, attempting to reconnect...");
+            scheduleReconnect();
+            return;
+        }
+        if (limitExceeded) {
+            if (debug) logger.info("[HTTP] Limit exceeded, will retry after timeout");
+            return;
+        }
+        if (!connected.get()) {
+            if (debug) logger.info("[HTTP] Not connected, attempting to reconnect...");
+            scheduleReconnect();
+        }
+    }
+
     private void sendReportStats() {
         CompletableFuture.runAsync(() -> {
             try {
@@ -278,11 +322,16 @@ public class HttpAIClient implements IAIClient {
                         .build();
 
                 try (Response response = httpClient.newCall(request).execute()) {
+                    int code = response.code();
                     if (response.isSuccessful()) {
                         limitExceeded = false;
-                    } else if (response.code() == 429) {
+                        serverErrorState = false;
+                    } else if (code == 429) {
                         limitExceeded = true;
                         logger.warning("[HTTP] Online limit exceeded - Predict blocked");
+                    } else if (code >= 500) {
+                        logger.warning("[HTTP] ReportStats received server error " + code);
+                        enterServerErrorState("ReportStats received HTTP " + code);
                     }
                 }
             } catch (IOException e) {
@@ -293,9 +342,14 @@ public class HttpAIClient implements IAIClient {
 
     private void scheduleReconnect() {
         if (shuttingDown.get() || !autoReconnectEnabled) return;
+        if (reconnectTask.get() != null) {
+            logger.info("[HTTP] Reconnect already scheduled, skipping");
+            return;
+        }
         logger.info("[HTTP] Scheduling reconnect in 10 seconds...");
-        SchedulerManager.getAdapter().runAsyncDelayed(() -> {
-            if (!shuttingDown.get() && autoReconnectEnabled) {
+        ScheduledTask task = SchedulerManager.getAdapter().runAsyncDelayed(() -> {
+            reconnectTask.set(null);
+            if (!shuttingDown.get() && autoReconnectEnabled && !connected.get()) {
                 connect().thenAccept(success -> {
                     if (!success) {
                         scheduleReconnect();
@@ -305,6 +359,7 @@ public class HttpAIClient implements IAIClient {
                 });
             }
         }, 200);
+        reconnectTask.set(task);
     }
 
     @Override
@@ -316,6 +371,10 @@ public class HttpAIClient implements IAIClient {
         if (limitExceeded) {
             return io.reactivex.rxjava3.core.Observable.error(
                     new IllegalStateException("Online limit exceeded, Predict blocked"));
+        }
+        if (isServerInErrorState()) {
+            return io.reactivex.rxjava3.core.Observable.error(
+                    new IllegalStateException("Server error state active, Predict blocked"));
         }
 
         return io.reactivex.rxjava3.core.Observable.fromFuture(
@@ -338,23 +397,33 @@ public class HttpAIClient implements IAIClient {
                         try (Response response = httpClient.newCall(request).execute()) {
                             ResponseBody respBody = response.body();
                             String responseBody = respBody != null ? respBody.string() : "";
+                            int code = response.code();
 
-                            if (response.code() == 401 || response.code() == 403) {
+                            if (code == 401 || code == 403) {
                                 logger.severe("[HTTP] Authentication failed! API key is invalid, expired, or corrupted. Please check your API key in config.yml");
                                 connected.set(false);
                                 throw new RuntimeException("API key is invalid or corrupted");
                             }
+                            if (code == 429) {
+                                limitExceeded = true;
+                                logger.warning("[HTTP] Online limit exceeded - Predict blocked");
+                                throw new RuntimeException("Online limit exceeded");
+                            }
+                            if (code >= 500) {
+                                enterServerErrorState("Server error HTTP " + code + ": " + responseBody);
+                                throw new RuntimeException("Server error HTTP " + code + " - entering silent mode");
+                            }
                             if (!response.isSuccessful()) {
-                                if (response.code() == 429) {
-                                    limitExceeded = true;
-                                    throw new RuntimeException("Online limit exceeded");
-                                }
-                                throw new RuntimeException("HTTP " + response.code() + ": " + responseBody);
+                                throw new RuntimeException("HTTP " + code + ": " + responseBody);
                             }
 
                             return parsePredictResponse(responseBody);
                         }
                     } catch (Exception e) {
+                        String msg = e.getMessage();
+                        if (msg != null && (msg.contains("Server error") || msg.contains("503") || msg.contains("500"))) {
+                            enterServerErrorState(msg);
+                        }
                         throw new RuntimeException(e.getMessage());
                     }
                 }, httpExecutor)
@@ -386,6 +455,28 @@ public class HttpAIClient implements IAIClient {
     @Override
     public boolean isLimitExceeded() {
         return limitExceeded;
+    }
+
+    @Override
+    public boolean isServerErrorState() {
+        return serverErrorState;
+    }
+
+    private boolean isServerInErrorState() {
+        if (!serverErrorState) return false;
+        if (System.currentTimeMillis() - lastServerErrorTime > SERVER_ERROR_SILENCE_MS) {
+            logger.info("[HTTP] Server error state expired, clearing");
+            serverErrorState = false;
+            return false;
+        }
+        return true;
+    }
+
+    private void enterServerErrorState(String reason) {
+        serverErrorState = true;
+        lastServerErrorTime = System.currentTimeMillis();
+        logger.warning("[HTTP] Entering server error state: " + reason);
+        scheduleReconnect();
     }
 
     @Override

@@ -140,6 +140,10 @@ public class AIClientProvider {
         return currentClient != null && currentClient.isLimitExceeded();
     }
 
+    public boolean isServerErrorState() {
+        return currentClient != null && currentClient.isServerErrorState();
+    }
+
     public String getClientType() {
         return clientType;
     }
