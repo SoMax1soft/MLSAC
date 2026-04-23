@@ -149,7 +149,7 @@ public class HologramManager {
                 Optional.of(UUID.randomUUID()),
                 EntityTypes.ARMOR_STAND,
                 new Vector3d(loc.getX(), loc.getY(), loc.getZ()),
-                0, 0, 0, 0, null
+                0, 0, 0, 0, Optional.of(new Vector3d(0, 0, 0))
         );
         PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, spawn);
 
