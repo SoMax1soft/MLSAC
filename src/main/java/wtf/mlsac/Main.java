@@ -232,6 +232,16 @@ public final class Main extends JavaPlugin {
             }
         }
         if (PacketEvents.getAPI() != null && PacketEvents.getAPI().isInitialized()) {
+            try {
+                if (hitListener != null) {
+                    PacketEvents.getAPI().getEventManager().unregisterListener(hitListener);
+                }
+                if (rotationListener != null) {
+                    PacketEvents.getAPI().getEventManager().unregisterListener(rotationListener);
+                }
+            } catch (Exception e) {
+                getLogger().warning("Error unregistering listeners: " + e.getMessage());
+            }
             PacketEvents.getAPI().terminate();
         }
         SchedulerManager.reset();
