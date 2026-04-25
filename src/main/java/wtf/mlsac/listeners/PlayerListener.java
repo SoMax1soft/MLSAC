@@ -28,9 +28,11 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerKickEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import wtf.mlsac.Main;
 import wtf.mlsac.Permissions;
@@ -185,6 +187,20 @@ public class PlayerListener implements Listener {
         }
         if (hologramManager != null) {
             hologramManager.handleQuit(player);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPlayerDeath(PlayerDeathEvent event) {
+        if (hologramManager != null) {
+            hologramManager.handleDeath(event.getEntity());
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPlayerRespawn(PlayerRespawnEvent event) {
+        if (hologramManager != null) {
+            hologramManager.handleRespawn(event.getPlayer());
         }
     }
 }

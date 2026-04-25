@@ -93,7 +93,8 @@ public class HologramManager {
                 String targetWorld = target.getWorld().getName();
 
                 if (!viewerWorld.equals(targetWorld) ||
-                        viewerLoc.distanceSquared(target.getLocation()) > viewDistSq) {
+                        viewerLoc.distanceSquared(target.getLocation()) > viewDistSq ||
+                        target.isDead()) {
                     removeTarget(viewer, targetId, state);
                     continue;
                 }
@@ -283,10 +284,27 @@ public class HologramManager {
     }
 
     public void handleQuit(Player player) {
-        ViewerState state = viewers.remove(player.getUniqueId());
+        UUID playerId = player.getUniqueId();
+        ViewerState state = viewers.remove(playerId);
         if (state != null) {
+            destroyViewerEntities(playerId, state);
             state.targets.clear();
         }
+
+        for (ViewerState viewerState : viewers.values()) {
+            removeTarget(Bukkit.getPlayer(viewerState.viewerId), playerId, viewerState);
+        }
+    }
+
+    public void handleDeath(Player player) {
+        UUID playerId = player.getUniqueId();
+        for (ViewerState viewerState : viewers.values()) {
+            removeTarget(Bukkit.getPlayer(viewerState.viewerId), playerId, viewerState);
+        }
+    }
+
+    public void handleRespawn(Player player) {
+        // Голограммы автоматически появятся в следующем тике
     }
 
     private static class ViewerState {
