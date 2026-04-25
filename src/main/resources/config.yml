@@ -16,16 +16,15 @@ outputDirectory: "data"
 # ┌───────────────────────────────────────────────────────────────────────────────┐
 # │                            DETECTION SETTINGS                                 │
 # └───────────────────────────────────────────────────────────────────────────────┘
-# Guide https://mlsac.wtf/dashboard/wiki
 detection:
   # Enable AI-based cheat detection 
-  enabled: false # DONT FORGET TO TURN ON (enabled: true) <---
+  enabled: true # DONT FORGET TO TURN ON (enabled: true) <---
   
-  # AI server endpoint (for HTTP mode use /api/v1 suffix)
+  # AI server endpoint
   endpoint: "https://api.mlsac.net"
   
   # API key for authentication
-  # To buy API key visit https://mlsac.wtf/dashboard
+  # To buy API key visit https://mlsac.net
   # Free trial is also available in dashboard
   api-key: "your-api-key"
 
@@ -123,7 +122,6 @@ violation:
 #
 # Legacy placeholders also supported: <player>, <vl>, <probability>, <buffer>
 #
-# Guide https://mlsac.wtf/dashboard/wiki
 penalties:
   # Minimum probability required for penalty execution (lowered for aggressiveness)
   # Do not change unless you know what you are doing

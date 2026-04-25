@@ -585,7 +585,7 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
         List<String> completions = new ArrayList<>();
         if (args.length == 1) {
             List<String> commands = Arrays.asList("start", "stop", "datastatus", "alerts", "prob", "reload",
-                    "reinstall", "kicklist", "suspects", "punish", "profile");
+                    "reinstall", "kicklist", "suspects", "punish", "profile", "falsepositive");
             completions.addAll(filterStartsWith(commands, args[0]));
         } else if (args.length == 2) {
             String subCommand = args[0].toLowerCase();

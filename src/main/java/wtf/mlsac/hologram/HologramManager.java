@@ -122,12 +122,18 @@ public class HologramManager {
         } else {
             entityId = cache.entityId;
             boolean textChanged = !newText.equals(cache.lastText);
-            boolean moved = cache.lastLoc != null && cache.lastLoc.distanceSquared(loc) > 0.01;
+            
+            // Check if world changed - if so, we must re-spawn because client cleared entities
+            boolean worldChanged = cache.lastLoc == null || !cache.lastLoc.getWorld().equals(loc.getWorld());
+            boolean moved = worldChanged || cache.lastLoc.distanceSquared(loc) > 0.01;
 
-            if (moved) {
+            if (worldChanged) {
+                spawn(viewer, entityId, loc, newText);
+            } else if (moved) {
                 teleport(viewer, entityId, loc);
             }
-            if (textChanged) {
+            
+            if (textChanged && !worldChanged) {
                 updateText(viewer, entityId, newText);
             }
 
@@ -153,12 +159,28 @@ public class HologramManager {
         );
         PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, spawn);
 
-        List<EntityData<?>> meta = new ArrayList<>();
-        meta.add(new EntityData(0, EntityDataTypes.BYTE, (byte) 0x20));
-        meta.add(new EntityData(2, EntityDataTypes.OPTIONAL_COMPONENT, Optional.of(GSON_SERIALIZER.serialize(LEGACY_SERIALIZER.deserialize(text)))));
-        meta.add(new EntityData(3, EntityDataTypes.BOOLEAN, true));
-        meta.add(new EntityData(15, EntityDataTypes.BYTE, (byte) 0x10));
-        PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, new WrapperPlayServerEntityMetadata(entityId, meta));
+        sendMetadata(viewer, entityId, text);
+    }
+
+    private void sendMetadata(Player viewer, int entityId, String text) {
+        try {
+            List<EntityData<?>> meta = new ArrayList<>();
+            // Index 0: Entity flags (invisible)
+            meta.add(new EntityData(0, EntityDataTypes.BYTE, (byte) 0x20));
+            // Index 2: Custom name (text component)
+            meta.add(new EntityData(2, EntityDataTypes.OPTIONAL_COMPONENT,
+                Optional.of(GSON_SERIALIZER.serialize(LEGACY_SERIALIZER.deserialize(text)))));
+            // Index 3: Custom name visible
+            meta.add(new EntityData(3, EntityDataTypes.BOOLEAN, true));
+            // Index 15: Armor Stand flags (0x10 is Marker - removes hitbox and interaction)
+            meta.add(new EntityData(15, EntityDataTypes.BYTE, (byte) 0x10));
+
+            WrapperPlayServerEntityMetadata metadataPacket = new WrapperPlayServerEntityMetadata(entityId, meta);
+            PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, metadataPacket);
+        } catch (Exception e) {
+            plugin.getLogger().warning("Failed to send metadata for entity " + entityId + ": " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 
     private void teleport(Player viewer, int entityId, Location loc) {
@@ -187,24 +209,77 @@ public class HologramManager {
 
     private String buildText(AIPlayerData data) {
         if (data == null) {
-            return ColorUtil.colorize("&7ML: &8---");
+            return ColorUtil.colorize("&7AVG &8--- &7| &8---");
         }
-        double avg = data.getAverageProbability();
-        double last = data.getLastProbability();
-        String color = getColor(last);
 
-        String format = plugin.getHologramConfig().getConfig().getString("nametags.format", "&6AVG &f{AVG}% &7| {HIST}");
+        List<AIPlayerData.ModelProbabilityEntry> history = data.getModelProbabilityHistory();
+        if (history.isEmpty()) {
+            return ColorUtil.colorize("&7AVG &8--- &7| &8---");
+        }
+
+        double sum = 0;
+        int count = 0;
+        int historyLimit = plugin.getHologramConfig().getConfig().getInt("nametags.history-limit", 8);
+
+        int startIdx = Math.max(0, history.size() - historyLimit);
+        for (int i = startIdx; i < history.size(); i++) {
+            sum += history.get(i).getProbability();
+            count++;
+        }
+
+        double avg = count > 0 ? (sum / count) * 100 : 0;
+
+        StringBuilder histBuilder = new StringBuilder();
+        for (int i = startIdx; i < history.size(); i++) {
+            if (i > startIdx) histBuilder.append(" ");
+
+            AIPlayerData.ModelProbabilityEntry entry = history.get(i);
+            String formattedEntry = formatModelResult(entry);
+            histBuilder.append(formattedEntry);
+        }
+
+        String format = plugin.getHologramConfig().getConfig().getString("nametags.hologram", "&6AVG &f{AVG}% &7| {HIST}");
+        String avgColor = getColorForProbability(avg / 100);
+
         return ColorUtil.colorize(format
-                .replace("{AVG}", String.format("%.0f", avg * 100))
-                .replace("{HIST}", color + String.format("%.0f%%", last * 100)));
+            .replace("{AVG}", avgColor + String.format("%.0f", avg))
+            .replace("{HIST}", histBuilder.toString()));
     }
 
-    private String getColor(double prob) {
-        if (prob >= 0.9) return "&4&l";
-        if (prob >= 0.8) return "&4";
-        if (prob >= 0.6) return "&c";
-        if (prob >= 0.4) return "&6";
-        return "&a";
+    private String formatModelResult(AIPlayerData.ModelProbabilityEntry entry) {
+        String modelName = entry.getModelName().toLowerCase();
+        String formatKey;
+        if (modelName.contains("fast")) {
+            formatKey = "nametags.fast-format";
+        } else if (modelName.contains("pro")) {
+            formatKey = "nametags.pro-format";
+        } else if (modelName.contains("ultra")) {
+            formatKey = "nametags.ultra-format";
+        } else {
+            return "?";
+        }
+
+        String format = plugin.getHologramConfig().getConfig().getString(formatKey, "&f{RESULT}%");
+        int prob = (int) (entry.getProbability() * 100);
+        return format.replace("{RESULT}", String.valueOf(prob));
+    }
+
+    private String getColorForProbability(double probability) {
+        double critical_bold = plugin.getHologramConfig().getConfig().getDouble("nametags.colors.thresholds.critical-bold", 0.9);
+        double critical = plugin.getHologramConfig().getConfig().getDouble("nametags.colors.thresholds.critical", 0.8);
+        double high = plugin.getHologramConfig().getConfig().getDouble("nametags.colors.thresholds.high", 0.6);
+        double medium = plugin.getHologramConfig().getConfig().getDouble("nametags.colors.thresholds.medium", 0.5);
+
+        if (probability >= critical_bold) {
+            return plugin.getHologramConfig().getConfig().getString("nametags.colors.critical_bold", "&4");
+        } else if (probability >= critical) {
+            return plugin.getHologramConfig().getConfig().getString("nametags.colors.critical", "&c");
+        } else if (probability >= high) {
+            return plugin.getHologramConfig().getConfig().getString("nametags.colors.high", "&c");
+        } else if (probability >= medium) {
+            return plugin.getHologramConfig().getConfig().getString("nametags.colors.medium", "&f");
+        }
+        return plugin.getHologramConfig().getConfig().getString("nametags.colors.low", "&f");
     }
 
     public void handleQuit(Player player) {

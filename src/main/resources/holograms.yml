@@ -2,33 +2,22 @@
 # ║                         MLSAC Hologram Configuration                          ║
 # ╚═══════════════════════════════════════════════════════════════════════════════╝
 
-# ┌───────────────────────────────────────────────────────────────────────────────┐
-# │                               HOLOGRAM GUIDE                                  │
-# ├───────────────────────────────────────────────────────────────────────────────┤
-# │ Holograms display AI probability above player heads for staff.                │
-# │ Uses optimized packet-based ArmorStands (entities only exist for staff).    │
-# │                                                                               │
-# │ UPDATE INTERVAL: How often (in ticks) to update hologram positions/text.     │
-# │ VIEW DISTANCE: Max distance (in blocks) for staff to see holograms.         │
-# └───────────────────────────────────────────────────────────────────────────────┘
-
+# Configuration for Suspect Nametags
 nametags:
-  # General toggle for suspect monitoring holograms
   enabled: true
-
-  # How often to update holograms (in ticks). 20 = 1 second
-  update-interval-ticks: 20
-
-  # Max distance to see suspect holograms
-  view-distance: 40
-
-  # Default format for the hologram text
-  # Placeholders: {AVG} - average probability, {HIST} - colored last probability
-  format: '&6AVG &f{AVG}% &7| {HIST}'
-
-  # Thresholds for probability coloring
-  # medium (yellow), high (red), critical (dark red), critical_bold (bold dark red)
+  hologram: '&6AVG &f{AVG}% &7| {HIST}'
+  fast-format: '&2F&f{RESULT}%'
+  pro-format: '&6P&f{RESULT}%'
+  ultra-format: '&cU&f{RESULT}%'
+  history-limit: 8
+  update-interval-ticks: 1
+  view-distance: 64
   colors:
+    low: '&f'
+    medium: '&f'
+    high: '&c'
+    critical: '&c'
+    critical_bold: '&4'
     thresholds:
       medium: 0.5
       high: 0.6
