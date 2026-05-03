@@ -54,10 +54,10 @@ public class AICheck {
     private final Logger logger;
     private final SchedulerAdapter schedulerAdapter;
     private final Map<UUID, AIPlayerData> playerData;
-    private Config config;
+    private volatile Config config;
     private WorldGuardCompat worldGuardCompat;
-    private int sequence;
-    private int step;
+    private volatile int sequence;
+    private volatile int step;
 
     public AICheck(Main plugin, Config config,
             AIClientProvider clientProvider,
@@ -258,7 +258,7 @@ public class AICheck {
             alertManager.sendAlert(playerName, probability, data.getBuffer(), modelName);
             Player player = Bukkit.getPlayer(playerUuid);
             if (player != null && player.isOnline() && plugin.getDetectionResponseManager() != null) {
-                plugin.getDetectionResponseManager().registerDetection(player, probability);
+                schedulerAdapter.runSync(() -> plugin.getDetectionResponseManager().registerDetection(player, probability));
             }
         }
 

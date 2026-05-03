@@ -377,58 +377,67 @@ public class HttpAIClient implements IAIClient {
                     new IllegalStateException("Server error state active, Predict blocked"));
         }
 
-        return io.reactivex.rxjava3.core.Observable.fromFuture(
-                CompletableFuture.supplyAsync(() -> {
-                    try {
-                        String url = serverAddress + "/api/v1/predict";
-                        String dataBase64 = java.util.Base64.getEncoder().encodeToString(playerData);
+        return io.reactivex.rxjava3.core.Observable.create(emitter -> {
+            CompletableFuture.supplyAsync(() -> {
+                try {
+                    String url = serverAddress + "/api/v1/predict";
+                    String dataBase64 = java.util.Base64.getEncoder().encodeToString(playerData);
 
-                        String json = sessionId != null
-                            ? "{\"sessionId\":\"" + sessionId + "\",\"playerData\":\"" + dataBase64 + "\",\"playerUuid\":\"" + playerUuid + "\",\"playerName\":\"" + playerName + "\"}"
-                            : "{\"playerData\":\"" + dataBase64 + "\",\"playerUuid\":\"" + playerUuid + "\",\"playerName\":\"" + playerName + "\"}";
+                    String json = sessionId != null
+                        ? "{\"sessionId\":\"" + sessionId + "\",\"playerData\":\"" + dataBase64 + "\",\"playerUuid\":\"" + playerUuid + "\",\"playerName\":\"" + playerName + "\"}"
+                        : "{\"playerData\":\"" + dataBase64 + "\",\"playerUuid\":\"" + playerUuid + "\",\"playerName\":\"" + playerName + "\"}";
 
-                        RequestBody body = RequestBody.create(JSON, json);
-                        Request request = new Request.Builder()
-                                .url(url)
-                                .post(body)
-                                .header("X-API-Key", apiKey)
-                                .build();
+                    RequestBody body = RequestBody.create(JSON, json);
+                    Request request = new Request.Builder()
+                            .url(url)
+                            .post(body)
+                            .header("X-API-Key", apiKey)
+                            .build();
 
-                        try (Response response = httpClient.newCall(request).execute()) {
-                            ResponseBody respBody = response.body();
-                            String responseBody = respBody != null ? respBody.string() : "";
-                            int code = response.code();
+                    try (Response response = httpClient.newCall(request).execute()) {
+                        ResponseBody respBody = response.body();
+                        String responseBody = respBody != null ? respBody.string() : "";
+                        int code = response.code();
 
-                            if (code == 401 || code == 403) {
-                                logger.severe("[HTTP] Authentication failed! API key is invalid, expired, or corrupted. Please check your API key in config.yml");
-                                connected.set(false);
-                                throw new RuntimeException("API key is invalid or corrupted");
-                            }
-                            if (code == 429) {
-                                limitExceeded = true;
-                                logger.warning("[HTTP] Online limit exceeded - Predict blocked");
-                                throw new RuntimeException("Online limit exceeded");
-                            }
-                            if (code >= 500) {
-                                enterServerErrorState("Server error HTTP " + code + ": " + responseBody);
-                                throw new RuntimeException("Server error HTTP " + code + " - entering silent mode");
-                            }
-                            if (!response.isSuccessful()) {
-                                throw new RuntimeException("HTTP " + code + ": " + responseBody);
-                            }
-
-                            return parsePredictResponse(responseBody);
+                        if (code == 401 || code == 403) {
+                            logger.severe("[HTTP] Authentication failed! API key is invalid, expired, or corrupted. Please check your API key in config.yml");
+                            connected.set(false);
+                            throw new RuntimeException("API key is invalid or corrupted");
                         }
-                    } catch (Exception e) {
-                        String msg = e.getMessage();
-                        if (msg != null && (msg.contains("Server error") || msg.contains("503") || msg.contains("500"))) {
-                            enterServerErrorState(msg);
+                        if (code == 429) {
+                            limitExceeded = true;
+                            logger.warning("[HTTP] Online limit exceeded - Predict blocked");
+                            throw new RuntimeException("Online limit exceeded");
                         }
-                        throw new RuntimeException(e.getMessage());
+                        if (code >= 500) {
+                            enterServerErrorState("Server error HTTP " + code + ": " + responseBody);
+                            throw new RuntimeException("Server error HTTP " + code + " - entering silent mode");
+                        }
+                        if (!response.isSuccessful()) {
+                            throw new RuntimeException("HTTP " + code + ": " + responseBody);
+                        }
+
+                        return parsePredictResponse(responseBody);
                     }
-                }, httpExecutor)
-        );
+                } catch (Exception e) {
+                    String msg = e.getMessage();
+                    if (msg != null && (msg.contains("Server error") || msg.contains("503") || msg.contains("500"))) {
+                        enterServerErrorState(msg);
+                    }
+                    throw new RuntimeException(e.getMessage());
+                }
+            }, httpExecutor).whenComplete((res, err) -> {
+                if (emitter.isDisposed()) return;
+                if (err != null) {
+                    emitter.onError(err);
+                } else {
+                    emitter.onNext(res);
+                    emitter.onComplete();
+                }
+            });
+        });
     }
+
 
     private AIResponse parsePredictResponse(String responseBody) {
         try {
