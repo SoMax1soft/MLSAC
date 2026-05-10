@@ -216,6 +216,8 @@ public class AICheck {
             final UUID playerUuid = player.getUniqueId();
             final String playerName = player.getName();
             client.predict(serialized, playerUuid.toString(), playerName)
+                    .subscribeOn(io.reactivex.rxjava3.schedulers.Schedulers.io())
+                    .observeOn(io.reactivex.rxjava3.schedulers.Schedulers.single())
                     .subscribe(response -> {
                         processResponse(playerUuid, playerName, data, response);
                     }, error -> {
