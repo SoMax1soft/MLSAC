@@ -53,13 +53,12 @@ import wtf.mlsac.compat.EffectCompat;
 import wtf.mlsac.compat.ParticleCompat;
 import wtf.mlsac.scheduler.ScheduledTask;
 import wtf.mlsac.scheduler.SchedulerManager;
-import java.util.HashSet;
 import java.util.Set;
 
 public class BanAnimation implements Listener {
     private final JavaPlugin plugin;
     private final Map<UUID, String> pendingBans = new ConcurrentHashMap<>();
-    private final Set<UUID> animatingPlayers = new HashSet<>();
+    private final Set<UUID> animatingPlayers = ConcurrentHashMap.newKeySet();
     private static final int LEVITATION_DURATION = 60;
     private static final int TOTAL_ANIMATION_TICKS = 80;
     private static final double LEVITATION_HEIGHT = 2.0;
@@ -72,10 +71,14 @@ public class BanAnimation implements Listener {
     public void playAnimation(Player player, String banCommand, PenaltyContext context) {
         if (player == null)
             return;
-        if (!Bukkit.isPrimaryThread()) {
-            SchedulerManager.getAdapter().runSync(() -> playAnimation(player, banCommand, context));
+        if (SchedulerManager.getServerType() == wtf.mlsac.scheduler.ServerType.FOLIA || !Bukkit.isPrimaryThread()) {
+            SchedulerManager.getAdapter().runEntitySync(player, () -> startAnimation(player, banCommand, context));
             return;
         }
+        startAnimation(player, banCommand, context);
+    }
+
+    private void startAnimation(Player player, String banCommand, PenaltyContext context) {
         if (!player.isOnline()) {
             executeBanCommand(banCommand);
             return;
@@ -90,7 +93,7 @@ public class BanAnimation implements Listener {
         freezePlayer(player);
         final int[] tick = { 0 };
         final ScheduledTask[] taskRef = new ScheduledTask[1];
-        taskRef[0] = SchedulerManager.getAdapter().runSyncRepeating(() -> {
+        taskRef[0] = SchedulerManager.getAdapter().runEntitySyncRepeating(player, () -> {
             try {
                 if (!player.isOnline()) {
                     taskRef[0].cancel();
@@ -241,6 +244,10 @@ public class BanAnimation implements Listener {
     }
 
     private void executeBanCommand(String command) {
+        if (SchedulerManager.getServerType() == wtf.mlsac.scheduler.ServerType.FOLIA || !Bukkit.isPrimaryThread()) {
+            SchedulerManager.getAdapter().runSync(() -> Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command));
+            return;
+        }
         Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
     }
 

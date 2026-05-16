@@ -43,7 +43,7 @@ public class AIPlayerData {
     private final Deque<ModelProbabilityEntry> modelProbabilityHistory;
     private final Map<String, Double> lastProbabilitiesByModel;
     private final Map<String, Deque<Double>> probabilityHistoryByModel;
-    private final int sequence;
+    private int sequence;
     private int ticksSinceAttack;
     private int ticksStep;
     private volatile double buffer;
@@ -194,12 +194,29 @@ public class AIPlayerData {
         lock.writeLock().lock();
         try {
             tickBuffer.clear();
+            tickHistory.clear();
             probabilityHistory.clear();
             modelProbabilityHistory.clear();
             lastProbabilitiesByModel.clear();
             probabilityHistoryByModel.clear();
             aimProcessor.reset();
+            ticksSinceAttack = sequence + 1;
+            ticksStep = 0;
             pendingRequest = false;
+        } finally {
+            lock.writeLock().unlock();
+        }
+    }
+
+    public void resetSequence(int newSequence) {
+        lock.writeLock().lock();
+        try {
+            this.sequence = Math.max(1, newSequence);
+            tickBuffer.clear();
+            ticksSinceAttack = this.sequence + 1;
+            ticksStep = 0;
+            pendingRequest = false;
+            aimProcessor.reset();
         } finally {
             lock.writeLock().unlock();
         }

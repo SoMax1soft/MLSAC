@@ -215,6 +215,9 @@ public final class Main extends JavaPlugin {
         if (aiCheck != null) {
             aiCheck.clearAll();
         }
+        if (violationManager != null) {
+            violationManager.shutdown();
+        }
         if (commandHandler != null) {
             commandHandler.cleanup();
         }
@@ -230,6 +233,9 @@ public final class Main extends JavaPlugin {
                     e.printStackTrace();
                 }
             }
+        }
+        if (analyticsClient != null) {
+            analyticsClient.shutdown();
         }
         if (PacketEvents.getAPI() != null && PacketEvents.getAPI().isInitialized()) {
             try {
@@ -268,6 +274,9 @@ public final class Main extends JavaPlugin {
 
                 hologramManager = new HologramManager(this, aiCheck);
                 hologramManager.start();
+                if (playerListener != null) {
+                    playerListener.setHologramManager(hologramManager);
+                }
 
                 alertManager.setConfig(config);
                 violationManager.setConfig(config);

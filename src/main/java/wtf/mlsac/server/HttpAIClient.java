@@ -52,7 +52,7 @@ public class HttpAIClient implements IAIClient {
     private final Logger logger;
     private final IntSupplier onlinePlayersSupplier;
     private final boolean debug;
-    private final Executor httpExecutor;
+    private final ExecutorService httpExecutor;
     private final OkHttpClient httpClient;
     private final AtomicReference<ScheduledTask> heartbeatTask = new AtomicReference<>();
     private final AtomicReference<ScheduledTask> reportStatsTask = new AtomicReference<>();
@@ -75,7 +75,8 @@ public class HttpAIClient implements IAIClient {
         this.logger = plugin.getLogger();
         this.onlinePlayersSupplier = onlinePlayersSupplier;
         this.debug = debug;
-        this.httpExecutor = Executors.newSingleThreadExecutor(r -> {
+        int workers = Math.max(2, Math.min(4, Runtime.getRuntime().availableProcessors()));
+        this.httpExecutor = Executors.newFixedThreadPool(workers, r -> {
             Thread thread = new Thread(r, "http-ai-client-worker");
             thread.setDaemon(true);
             return thread;
@@ -210,18 +211,19 @@ public class HttpAIClient implements IAIClient {
         serverErrorState = false;
 
         return CompletableFuture.runAsync(() -> {
-            httpExecutor.execute(() -> {
-                logger.info("[HTTP] Disconnected from server");
-            });
+            logger.info("[HTTP] Disconnected from server");
+            httpClient.dispatcher().cancelAll();
+            httpClient.connectionPool().evictAll();
+            httpExecutor.shutdown();
             try {
-                if (!((ExecutorService) httpExecutor).awaitTermination(3, TimeUnit.SECONDS)) {
-                    ((ExecutorService) httpExecutor).shutdownNow();
+                if (!httpExecutor.awaitTermination(3, TimeUnit.SECONDS)) {
+                    httpExecutor.shutdownNow();
                 }
             } catch (InterruptedException e) {
-                ((ExecutorService) httpExecutor).shutdownNow();
+                httpExecutor.shutdownNow();
                 Thread.currentThread().interrupt();
             }
-        }, httpExecutor).thenApply(v -> null);
+        }).thenApply(v -> null);
     }
 
     private void startHeartbeat() {

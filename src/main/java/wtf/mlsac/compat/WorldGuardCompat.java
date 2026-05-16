@@ -34,11 +34,14 @@ import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 public class WorldGuardCompat {
+    private static final long REGION_CACHE_TTL_MS = 500L;
     private final Logger logger;
     private final boolean enabled;
     private final Map<String, Set<String>> disabledRegions;
+    private final Map<UUID, RegionCheckCache> bypassCache = new ConcurrentHashMap<>();
     private boolean worldGuardAvailable;
     public WorldGuardCompat(Logger logger, boolean enabled, List<String> disabledRegionsList) {
         this.logger = logger;
@@ -82,7 +85,20 @@ public class WorldGuardCompat {
         if (!enabled || !worldGuardAvailable) {
             return false;
         }
-        return shouldBypassAtLocation(player.getLocation());
+        Location location = player.getLocation();
+        World world = location.getWorld();
+        if (world == null) {
+            return false;
+        }
+        long now = System.currentTimeMillis();
+        UUID playerId = player.getUniqueId();
+        RegionCheckCache cached = bypassCache.get(playerId);
+        if (cached != null && cached.matches(world.getName(), location) && now - cached.checkedAt <= REGION_CACHE_TTL_MS) {
+            return cached.bypass;
+        }
+        boolean bypass = shouldBypassAtLocation(location);
+        bypassCache.put(playerId, new RegionCheckCache(world.getName(), location, now, bypass));
+        return bypass;
     }
     public boolean shouldBypassAtLocation(Location location) {
         if (!enabled || !worldGuardAvailable) {
@@ -159,5 +175,34 @@ public class WorldGuardCompat {
     }
     public Map<String, Set<String>> getDisabledRegions() {
         return Collections.unmodifiableMap(disabledRegions);
+    }
+
+    public void clearCache(UUID playerId) {
+        bypassCache.remove(playerId);
+    }
+
+    private static final class RegionCheckCache {
+        private final String worldName;
+        private final int blockX;
+        private final int blockY;
+        private final int blockZ;
+        private final long checkedAt;
+        private final boolean bypass;
+
+        private RegionCheckCache(String worldName, Location location, long checkedAt, boolean bypass) {
+            this.worldName = worldName;
+            this.blockX = location.getBlockX();
+            this.blockY = location.getBlockY();
+            this.blockZ = location.getBlockZ();
+            this.checkedAt = checkedAt;
+            this.bypass = bypass;
+        }
+
+        private boolean matches(String worldName, Location location) {
+            return this.worldName.equals(worldName)
+                    && this.blockX == location.getBlockX()
+                    && this.blockY == location.getBlockY()
+                    && this.blockZ == location.getBlockZ();
+        }
     }
 }

@@ -82,7 +82,10 @@ public class SuspectsMenu implements Listener {
         }
         inventory.setItem(22, loading);
 
-        SchedulerManager.getAdapter().runAsync(() -> {
+        SchedulerManager.getAdapter().runEntitySync(admin, () -> {
+            if (!admin.isOnline()) {
+                return;
+            }
             List<Player> onlinePlayers = new ArrayList<>(Bukkit.getOnlinePlayers());
             List<SuspectData> suspectDataList = onlinePlayers.stream()
                     .map(this::mapSuspectData)
@@ -95,7 +98,7 @@ public class SuspectsMenu implements Listener {
 
             int start = page * ITEMS_PER_PAGE;
             int end = Math.min(start + ITEMS_PER_PAGE, suspectDataList.size());
-            List<SuspectData> pageData = suspectDataList.subList(start, end);
+            List<SuspectData> pageData = new ArrayList<>(suspectDataList.subList(start, end));
 
             List<CompletableFuture<Void>> futures = new ArrayList<>();
             for (SuspectData data : pageData) {
@@ -112,18 +115,30 @@ public class SuspectsMenu implements Listener {
             int totalPagesFinal = totalPages;
             int endFinal = end;
             int totalSuspectsFinal = suspectDataList.size();
-            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).thenRun(() -> SchedulerManager
-                    .getAdapter().runSync(() -> renderPage(pageData, totalPagesFinal, endFinal, totalSuspectsFinal)));
+            if (futures.isEmpty()) {
+                renderPage(pageData, totalPagesFinal, endFinal, totalSuspectsFinal);
+                return;
+            }
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).whenComplete((ignored, error) ->
+                    SchedulerManager.getAdapter().runEntitySync(admin, () -> {
+                        if (admin.isOnline()) {
+                            renderPage(pageData, totalPagesFinal, endFinal, totalSuspectsFinal);
+                        }
+                    }));
         });
     }
 
     private SuspectData mapSuspectData(Player player) {
         AIPlayerData data = aiCheck.getPlayerData(player.getUniqueId());
-        if (data == null || data.getProbabilityHistory().isEmpty()) {
+        if (data == null) {
+            return null;
+        }
+        List<Double> history = data.getProbabilityHistory();
+        if (history.isEmpty()) {
             return null;
         }
         return new SuspectData(player.getUniqueId(), player.getName(), data.getAverageProbability(),
-                new ArrayList<>(data.getProbabilityHistory()));
+                new ArrayList<>(history));
     }
 
     private int normalizePage(int requestedPage, int totalPages) {

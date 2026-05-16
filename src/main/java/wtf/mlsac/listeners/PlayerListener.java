@@ -53,7 +53,7 @@ public class PlayerListener implements Listener {
     private final ViolationManager violationManager;
     private final SessionManager sessionManager;
     private final TickListener tickListener;
-    private final wtf.mlsac.hologram.HologramManager hologramManager;
+    private wtf.mlsac.hologram.HologramManager hologramManager;
     private final RotationListener rotationListener;
     private final AnalyticsClient analyticsClient;
     private HitListener hitListener;
@@ -78,9 +78,19 @@ public class PlayerListener implements Listener {
         this.hitListener = hitListener;
     }
 
+    public void setHologramManager(wtf.mlsac.hologram.HologramManager hologramManager) {
+        this.hologramManager = hologramManager;
+    }
+
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
+        if (plugin instanceof Main) {
+            Main main = (Main) plugin;
+            if (main.getAiClientProvider() != null) {
+                main.getAiClientProvider().handlePlayerJoin(player.getUniqueId());
+            }
+        }
         if (hitListener != null) {
             hitListener.cacheEntity(player);
         }
@@ -89,7 +99,7 @@ public class PlayerListener implements Listener {
         }
 
         try {
-            SchedulerManager.getAdapter().runSyncDelayed(() -> {
+            SchedulerManager.getAdapter().runEntitySyncDelayed(player, () -> {
                 if (player.isOnline()) {
                     if (player.hasPermission(Permissions.ALERTS) || player.hasPermission(Permissions.ADMIN)) {
                         alertManager.enableAlerts(player);
@@ -118,29 +128,21 @@ public class PlayerListener implements Listener {
             Main main = (Main) plugin;
             Config config = main.getPluginConfig();
             if (config.isAnalyticsEnabled()) {
-                analyticsClient.checkPlayer(player.getName()).thenAccept(result -> {
+                String playerName = player.getName();
+                analyticsClient.checkPlayer(playerName).thenAccept(result -> {
                     if (result.isFound() && result.getTotalDetections() >= config.getAnalyticsMinDetections()) {
                         MessagesConfig messagesConfig = main.getMessagesConfig();
                         String colorCode = config.getDetectionColor(result.getTotalDetections());
                         String detectionsColored = colorCode + result.getTotalDetections();
                         String template = messagesConfig.getMessage("analytics-join-alert");
                         String raw = messagesConfig.getPrefix() + template
-                                .replace("{PLAYER}", player.getName())
+                                .replace("{PLAYER}", playerName)
                                 .replace("{DETECTIONS_COLORED}", detectionsColored)
                                 .replace("{DETECTIONS}", String.valueOf(result.getTotalDetections()));
                         String message = ColorUtil.colorize(raw);
 
-                        SchedulerManager.getAdapter().runSync(() -> {
-                            for (org.bukkit.entity.Player online : org.bukkit.Bukkit.getOnlinePlayers()) {
-                                if (online.hasPermission(Permissions.ALERTS)
-                                        || online.hasPermission(Permissions.ADMIN)) {
-                                    online.sendMessage(message);
-                                }
-                            }
-                            if (config.isAiConsoleAlerts()) {
-                                plugin.getLogger().info(ColorUtil.stripColors(raw));
-                            }
-                        });
+                        alertManager.sendMessageToPermittedPlayers(message,
+                                config.isAiConsoleAlerts() ? ColorUtil.stripColors(raw) : null);
                     }
                 });
             }
@@ -178,6 +180,9 @@ public class PlayerListener implements Listener {
         }
         if (plugin instanceof Main) {
             Main main = (Main) plugin;
+            if (main.getAiClientProvider() != null) {
+                main.getAiClientProvider().handlePlayerQuit(player.getUniqueId());
+            }
             if (main.getDetectionResponseManager() != null) {
                 main.getDetectionResponseManager().handlePlayerQuit(player);
             }

@@ -4,7 +4,9 @@ import wtf.mlsac.checks.AICheck;
 import wtf.mlsac.compat.EventCompat;
 import wtf.mlsac.scheduler.ScheduledTask;
 import wtf.mlsac.scheduler.SchedulerManager;
+import wtf.mlsac.scheduler.ServerType;
 import wtf.mlsac.session.ISessionManager;
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -18,12 +20,14 @@ public class TickListener {
     private final AICheck aiCheck;
     private final EventCompat.TickHandler tickHandler;
     private final Map<UUID, ScheduledTask> playerTasks = new ConcurrentHashMap<>();
+    private final boolean usePerPlayerTasks;
     private HitListener hitListener;
 
     public TickListener(JavaPlugin plugin, ISessionManager sessionManager, AICheck aiCheck) {
         this.sessionManager = sessionManager;
         this.aiCheck = aiCheck;
         this.tickHandler = EventCompat.createTickHandler(plugin, this::onTick);
+        this.usePerPlayerTasks = SchedulerManager.getServerType() == ServerType.FOLIA;
     }
 
     public void start() {
@@ -47,9 +51,17 @@ public class TickListener {
         if (hitListener != null) {
             hitListener.setCurrentTick(currentTick);
         }
+        if (!usePerPlayerTasks) {
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                aiCheck.onTick(player);
+            }
+        }
     }
 
     public void startPlayerTask(Player player) {
+        if (!usePerPlayerTasks) {
+            return;
+        }
         if (playerTasks.containsKey(player.getUniqueId())) {
             return;
         }

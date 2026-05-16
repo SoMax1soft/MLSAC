@@ -30,6 +30,8 @@ import wtf.mlsac.Permissions;
 import wtf.mlsac.penalty.ActionHandler;
 import wtf.mlsac.penalty.ActionType;
 import wtf.mlsac.penalty.PenaltyContext;
+import wtf.mlsac.scheduler.SchedulerManager;
+import wtf.mlsac.scheduler.ServerType;
 import wtf.mlsac.util.ColorUtil;
 import java.util.Set;
 import java.util.UUID;
@@ -61,6 +63,18 @@ public class AlertHandler implements ActionHandler {
             return;
         }
         String formattedMessage = ColorUtil.colorize(alertPrefix + message);
+        if (SchedulerManager.getServerType() == ServerType.FOLIA) {
+            sendFolia(formattedMessage);
+            return;
+        }
+        if (!Bukkit.isPrimaryThread()) {
+            SchedulerManager.getAdapter().runSync(() -> sendNow(formattedMessage));
+            return;
+        }
+        sendNow(formattedMessage);
+    }
+
+    private void sendNow(String formattedMessage) {
         if (alertRecipients != null) {
             for (UUID uuid : alertRecipients) {
                 Player player = Bukkit.getPlayer(uuid);
@@ -73,6 +87,32 @@ public class AlertHandler implements ActionHandler {
                 if (canReceiveAlerts(player)) {
                     player.sendMessage(formattedMessage);
                 }
+            }
+        }
+        if (consoleAlerts) {
+            logger.info(ColorUtil.stripColors(formattedMessage));
+        }
+    }
+
+    private void sendFolia(String formattedMessage) {
+        if (alertRecipients != null) {
+            for (UUID uuid : alertRecipients) {
+                Player player = Bukkit.getPlayer(uuid);
+                if (player != null && player.isOnline()) {
+                    SchedulerManager.getAdapter().runEntitySync(player, () -> {
+                        if (player.isOnline() && canReceiveAlerts(player)) {
+                            player.sendMessage(formattedMessage);
+                        }
+                    });
+                }
+            }
+        } else {
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                SchedulerManager.getAdapter().runEntitySync(player, () -> {
+                    if (player.isOnline() && canReceiveAlerts(player)) {
+                        player.sendMessage(formattedMessage);
+                    }
+                });
             }
         }
         if (consoleAlerts) {

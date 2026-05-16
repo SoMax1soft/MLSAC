@@ -33,12 +33,14 @@ public class FoliaScheduledTask implements wtf.mlsac.scheduler.ScheduledTask {
     public void cancel() {
         if (!cancelled) {
             cancelled = true;
-            task.cancel();
+            if (task != null) {
+                task.cancel();
+            }
         }
     }
     @Override
     public boolean isCancelled() {
-        return cancelled || task.isCancelled();
+        return cancelled || task == null || task.isCancelled();
     }
     @Override
     public boolean isRunning() {

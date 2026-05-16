@@ -2,7 +2,7 @@ name: MLSAC
 version: '${version}'
 main: wtf.mlsac.Main
 api-version: '1.16'
-description: "MLSAC.WTF - Buy API"
+description: "MLSAC.NET - AI Anticheat"
 folia-supported: true
 
 commands:
@@ -15,6 +15,12 @@ commands:
       /mlsac prob <player> - Show player probability
       /mlsac reload - Reload config
       /mlsac reinstall - Reinstall config and keep api-key + AI detection
+      /mlsac falsepositive restore <player> - Export 5,000 ticks to CSV
+      /mlsac suspects - Open the suspects GUI
+      /mlsac punish <player> - Execute max punishment
+      /mlsac profile <player> - View player profile
+      /mlsac kicklist - View kick history
+      /mlsac punish <player> - Execute max punishment
     permission: mlsac.admin
     aliases: [ml]
 

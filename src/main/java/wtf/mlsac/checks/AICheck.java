@@ -23,7 +23,6 @@
 
 package wtf.mlsac.checks;
 
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import wtf.mlsac.Main;
@@ -213,13 +212,12 @@ public class AICheck {
                 plugin.debug("[AI] === TICK BUFFER END ===");
             }
             byte[] serialized = FlatBufferSerializer.serialize(ticks);
+            final Player playerRef = player;
             final UUID playerUuid = player.getUniqueId();
             final String playerName = player.getName();
             client.predict(serialized, playerUuid.toString(), playerName)
-                    .subscribeOn(io.reactivex.rxjava3.schedulers.Schedulers.io())
-                    .observeOn(io.reactivex.rxjava3.schedulers.Schedulers.single())
                     .subscribe(response -> {
-                        processResponse(playerUuid, playerName, data, response);
+                        processResponse(playerRef, playerUuid, playerName, data, response);
                     }, error -> {
                         handleError(playerName, data, error);
                     });
@@ -234,7 +232,7 @@ public class AICheck {
         return clientProvider != null && clientProvider.isAvailable() && !clientProvider.isServerErrorState();
     }
 
-    private void processResponse(UUID playerUuid, String playerName, AIPlayerData data, AIResponse response) {
+    private void processResponse(Player playerRef, UUID playerUuid, String playerName, AIPlayerData data, AIResponse response) {
         data.setPendingRequest(false);
         data.clearBuffer();
         if (response.getError() != null && response.getError().contains("INVALID_SEQUENCE")) {
@@ -258,16 +256,22 @@ public class AICheck {
 
         if (alertManager.shouldAlert(probability)) {
             alertManager.sendAlert(playerName, probability, data.getBuffer(), modelName);
-            Player player = Bukkit.getPlayer(playerUuid);
-            if (player != null && player.isOnline() && plugin.getDetectionResponseManager() != null) {
-                schedulerAdapter.runSync(() -> plugin.getDetectionResponseManager().registerDetection(player, probability));
+            if (playerRef != null && playerRef.isOnline() && plugin.getDetectionResponseManager() != null) {
+                schedulerAdapter.runEntitySync(playerRef, () -> {
+                    if (playerRef.isOnline()) {
+                        plugin.getDetectionResponseManager().registerDetection(playerRef, probability);
+                    }
+                });
             }
         }
 
         if (!isOnlyAlert && data.shouldFlag(config.getAiBufferFlag())) {
-            Player player = Bukkit.getPlayer(playerUuid);
-            if (player != null && player.isOnline()) {
-                schedulerAdapter.runSync(() -> violationManager.handleFlag(player, probability, data.getBuffer()));
+            if (playerRef != null && playerRef.isOnline()) {
+                schedulerAdapter.runEntitySync(playerRef, () -> {
+                    if (playerRef.isOnline()) {
+                        violationManager.handleFlag(playerRef, probability, data.getBuffer());
+                    }
+                });
             } else {
                 logger.warning("[AI] Player " + playerName + " went offline before punishment");
             }
@@ -284,7 +288,7 @@ public class AICheck {
                     logger.info("[AI] Updating sequence from " + this.sequence + " to " + newSequence);
                     this.sequence = newSequence;
                     for (AIPlayerData data : playerData.values()) {
-                        data.clearBuffer();
+                        data.resetSequence(newSequence);
                     }
                 }
             }
@@ -318,6 +322,12 @@ public class AICheck {
     }
 
     public void handlePlayerQuit(Player player) {
+        if (player != null) {
+            playerData.remove(player.getUniqueId());
+            if (worldGuardCompat != null) {
+                worldGuardCompat.clearCache(player.getUniqueId());
+            }
+        }
     }
 
     public void clearAll() {

@@ -20,6 +20,7 @@ import wtf.mlsac.checks.AICheck;
 import wtf.mlsac.data.AIPlayerData;
 import wtf.mlsac.scheduler.ScheduledTask;
 import wtf.mlsac.scheduler.SchedulerManager;
+import wtf.mlsac.scheduler.ServerType;
 import wtf.mlsac.util.ColorUtil;
 
 import java.util.*;
@@ -30,6 +31,9 @@ public class HologramManager {
     private static final LegacyComponentSerializer LEGACY_SERIALIZER = LegacyComponentSerializer.legacyAmpersand();
     private static final GsonComponentSerializer GSON_SERIALIZER = GsonComponentSerializer.gson();
     private static final int ENTITY_ID_START = 42000000;
+    private static final int DEFAULT_UPDATE_INTERVAL_TICKS = 5;
+    private static final int DEFAULT_MAX_TARGETS_PER_VIEWER = 16;
+    private static final double DEFAULT_MOVE_THRESHOLD_SQUARED = 0.04D;
 
     private final Main plugin;
     private final AICheck aiCheck;
@@ -46,7 +50,12 @@ public class HologramManager {
         if (!plugin.getHologramConfig().getConfig().getBoolean("nametags.enabled", true)) {
             return;
         }
-        int interval = plugin.getHologramConfig().getConfig().getInt("nametags.update-interval-ticks", 20);
+        if (SchedulerManager.getServerType() == ServerType.FOLIA) {
+            plugin.getLogger().warning("[Holograms] Nametag holograms are disabled on Folia to avoid unsafe cross-region player access.");
+            return;
+        }
+        int interval = Math.max(1, plugin.getHologramConfig().getConfig()
+                .getInt("nametags.update-interval-ticks", DEFAULT_UPDATE_INTERVAL_TICKS));
         task = SchedulerManager.getAdapter().runSyncRepeating(this::tick, interval, interval);
     }
 
@@ -67,13 +76,23 @@ public class HologramManager {
         Player[] online = Bukkit.getOnlinePlayers().toArray(new Player[0]);
         if (online.length == 0) return;
 
-        double viewDist = plugin.getHologramConfig().getConfig().getDouble("nametags.view-distance", 40.0);
-        double viewDistSq = viewDist * viewDist;
+        NametagSettings settings = readSettings();
+        double viewDistSq = settings.viewDistance * settings.viewDistance;
 
         List<Player> staff = new ArrayList<>();
+        Set<UUID> staffIds = new HashSet<>();
         for (Player p : online) {
             if (p.hasPermission(Permissions.ADMIN) || p.hasPermission(Permissions.ALERTS)) {
                 staff.add(p);
+                staffIds.add(p.getUniqueId());
+            }
+        }
+        for (UUID viewerId : new ArrayList<>(viewers.keySet())) {
+            if (!staffIds.contains(viewerId)) {
+                ViewerState state = viewers.remove(viewerId);
+                if (state != null) {
+                    destroyViewerEntities(viewerId, state);
+                }
             }
         }
         if (staff.isEmpty()) return;
@@ -82,36 +101,53 @@ public class HologramManager {
             UUID viewerId = viewer.getUniqueId();
             ViewerState state = viewers.computeIfAbsent(viewerId, k -> new ViewerState(viewerId));
 
-            Set<UUID> alive = new HashSet<>();
             Location viewerLoc = viewer.getLocation();
             String viewerWorld = viewerLoc.getWorld().getName();
+            List<TargetCandidate> candidates = new ArrayList<>();
 
             for (Player target : online) {
                 if (target.equals(viewer)) continue;
 
                 UUID targetId = target.getUniqueId();
                 String targetWorld = target.getWorld().getName();
+                AIPlayerData aiData = aiCheck.getPlayerData(targetId);
 
                 if (!viewerWorld.equals(targetWorld) ||
-                        viewerLoc.distanceSquared(target.getLocation()) > viewDistSq ||
+                        !shouldDisplay(aiData, settings) ||
                         target.isDead()) {
-                    removeTarget(viewer, targetId, state);
                     continue;
                 }
 
-                alive.add(targetId);
-                updateTarget(viewer, target, state);
+                Location targetLoc = target.getLocation();
+                double distanceSquared = viewerLoc.distanceSquared(targetLoc);
+                if (distanceSquared > viewDistSq) {
+                    continue;
+                }
+                candidates.add(new TargetCandidate(targetId, targetLoc.add(0, 2.3, 0), distanceSquared, aiData));
             }
 
-            state.targets.keySet().removeIf(id -> !alive.contains(id));
+            candidates.sort(Comparator.comparingDouble(candidate -> candidate.distanceSquared));
+            Set<UUID> alive = new HashSet<>();
+            int limit = Math.min(settings.maxTargetsPerViewer, candidates.size());
+            for (int i = 0; i < limit; i++) {
+                TargetCandidate candidate = candidates.get(i);
+                UUID targetId = candidate.targetId;
+                alive.add(targetId);
+                updateTarget(viewer, candidate, state, settings);
+            }
+
+            for (UUID targetId : new ArrayList<>(state.targets.keySet())) {
+                if (!alive.contains(targetId)) {
+                    removeTarget(viewer, targetId, state);
+                }
+            }
         }
     }
 
-    private void updateTarget(Player viewer, Player target, ViewerState state) {
-        UUID targetId = target.getUniqueId();
-        AIPlayerData aiData = aiCheck.getPlayerData(targetId);
-        String newText = buildText(aiData);
-        Location loc = target.getLocation().add(0, 2.3, 0);
+    private void updateTarget(Player viewer, TargetCandidate candidate, ViewerState state, NametagSettings settings) {
+        UUID targetId = candidate.targetId;
+        String newText = buildText(candidate.aiData, settings);
+        Location loc = candidate.location;
 
         int entityId;
         EntityCache cache = state.targets.get(targetId);
@@ -120,13 +156,15 @@ public class HologramManager {
             cache = new EntityCache(entityId);
             state.targets.put(targetId, cache);
             spawn(viewer, entityId, loc, newText);
+            cache.lastText = newText;
+            cache.lastLoc = loc;
         } else {
             entityId = cache.entityId;
             boolean textChanged = !newText.equals(cache.lastText);
             
             // Check if world changed - if so, we must re-spawn because client cleared entities
             boolean worldChanged = cache.lastLoc == null || !cache.lastLoc.getWorld().equals(loc.getWorld());
-            boolean moved = worldChanged || cache.lastLoc.distanceSquared(loc) > 0.01;
+            boolean moved = worldChanged || cache.lastLoc.distanceSquared(loc) > settings.moveThresholdSquared;
 
             if (worldChanged) {
                 spawn(viewer, entityId, loc, newText);
@@ -145,7 +183,7 @@ public class HologramManager {
 
     private void removeTarget(Player viewer, UUID targetId, ViewerState state) {
         EntityCache cache = state.targets.remove(targetId);
-        if (cache != null) {
+        if (cache != null && viewer != null && viewer.isOnline()) {
             destroyEntity(viewer, cache.entityId);
         }
     }
@@ -196,6 +234,9 @@ public class HologramManager {
     }
 
     private void destroyEntity(Player viewer, int entityId) {
+        if (viewer == null || !viewer.isOnline()) {
+            return;
+        }
         PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, new WrapperPlayServerDestroyEntities(entityId));
     }
 
@@ -208,7 +249,7 @@ public class HologramManager {
         }
     }
 
-    private String buildText(AIPlayerData data) {
+    private String buildText(AIPlayerData data, NametagSettings settings) {
         if (data == null) {
             return ColorUtil.colorize("&7AVG &8--- &7| &8---");
         }
@@ -220,7 +261,7 @@ public class HologramManager {
 
         double sum = 0;
         int count = 0;
-        int historyLimit = plugin.getHologramConfig().getConfig().getInt("nametags.history-limit", 8);
+        int historyLimit = settings.historyLimit;
 
         int startIdx = Math.max(0, history.size() - historyLimit);
         for (int i = startIdx; i < history.size(); i++) {
@@ -239,10 +280,9 @@ public class HologramManager {
             histBuilder.append(formattedEntry);
         }
 
-        String format = plugin.getHologramConfig().getConfig().getString("nametags.hologram", "&6AVG &f{AVG}% &7| {HIST}");
-        String avgColor = getColorForProbability(avg / 100);
+        String avgColor = getColorForProbability(avg / 100, settings);
 
-        return ColorUtil.colorize(format
+        return ColorUtil.colorize(settings.format
             .replace("{AVG}", avgColor + String.format("%.0f", avg))
             .replace("{HIST}", histBuilder.toString()));
     }
@@ -265,22 +305,52 @@ public class HologramManager {
         return format.replace("{RESULT}", String.valueOf(prob));
     }
 
-    private String getColorForProbability(double probability) {
-        double critical_bold = plugin.getHologramConfig().getConfig().getDouble("nametags.colors.thresholds.critical-bold", 0.9);
-        double critical = plugin.getHologramConfig().getConfig().getDouble("nametags.colors.thresholds.critical", 0.8);
-        double high = plugin.getHologramConfig().getConfig().getDouble("nametags.colors.thresholds.high", 0.6);
-        double medium = plugin.getHologramConfig().getConfig().getDouble("nametags.colors.thresholds.medium", 0.5);
+    private String getColorForProbability(double probability, NametagSettings settings) {
+        double critical_bold = settings.criticalBoldThreshold;
+        double critical = settings.criticalThreshold;
+        double high = settings.highThreshold;
+        double medium = settings.mediumThreshold;
 
         if (probability >= critical_bold) {
-            return plugin.getHologramConfig().getConfig().getString("nametags.colors.critical_bold", "&4");
+            return settings.criticalBoldColor;
         } else if (probability >= critical) {
-            return plugin.getHologramConfig().getConfig().getString("nametags.colors.critical", "&c");
+            return settings.criticalColor;
         } else if (probability >= high) {
-            return plugin.getHologramConfig().getConfig().getString("nametags.colors.high", "&c");
+            return settings.highColor;
         } else if (probability >= medium) {
-            return plugin.getHologramConfig().getConfig().getString("nametags.colors.medium", "&f");
+            return settings.mediumColor;
         }
-        return plugin.getHologramConfig().getConfig().getString("nametags.colors.low", "&f");
+        return settings.lowColor;
+    }
+
+    private boolean shouldDisplay(AIPlayerData data, NametagSettings settings) {
+        return settings.showEmpty || (data != null && !data.getModelProbabilityHistory().isEmpty());
+    }
+
+    private NametagSettings readSettings() {
+        org.bukkit.configuration.file.FileConfiguration config = plugin.getHologramConfig().getConfig();
+        double viewDistance = config.getDouble("nametags.view-distance", 40.0);
+        int maxTargets = Math.max(1, config.getInt("nametags.max-targets-per-viewer", DEFAULT_MAX_TARGETS_PER_VIEWER));
+        int historyLimit = Math.max(1, config.getInt("nametags.history-limit", 8));
+        boolean showEmpty = config.getBoolean("nametags.show-empty", false);
+        double moveThresholdSquared = Math.max(0.0D,
+                config.getDouble("nametags.movement-threshold-squared", DEFAULT_MOVE_THRESHOLD_SQUARED));
+        return new NametagSettings(
+                viewDistance,
+                maxTargets,
+                historyLimit,
+                showEmpty,
+                moveThresholdSquared,
+                config.getString("nametags.hologram", "&6AVG &f{AVG}% &7| {HIST}"),
+                config.getString("nametags.colors.low", "&f"),
+                config.getString("nametags.colors.medium", "&f"),
+                config.getString("nametags.colors.high", "&c"),
+                config.getString("nametags.colors.critical", "&c"),
+                config.getString("nametags.colors.critical_bold", "&4"),
+                config.getDouble("nametags.colors.thresholds.medium", 0.5),
+                config.getDouble("nametags.colors.thresholds.high", 0.6),
+                config.getDouble("nametags.colors.thresholds.critical", 0.8),
+                config.getDouble("nametags.colors.thresholds.critical-bold", 0.9));
     }
 
     public void handleQuit(Player player) {
@@ -323,6 +393,59 @@ public class HologramManager {
 
         EntityCache(int entityId) {
             this.entityId = entityId;
+        }
+    }
+
+    private static class TargetCandidate {
+        final UUID targetId;
+        final Location location;
+        final double distanceSquared;
+        final AIPlayerData aiData;
+
+        TargetCandidate(UUID targetId, Location location, double distanceSquared, AIPlayerData aiData) {
+            this.targetId = targetId;
+            this.location = location;
+            this.distanceSquared = distanceSquared;
+            this.aiData = aiData;
+        }
+    }
+
+    private static class NametagSettings {
+        final double viewDistance;
+        final int maxTargetsPerViewer;
+        final int historyLimit;
+        final boolean showEmpty;
+        final double moveThresholdSquared;
+        final String format;
+        final String lowColor;
+        final String mediumColor;
+        final String highColor;
+        final String criticalColor;
+        final String criticalBoldColor;
+        final double mediumThreshold;
+        final double highThreshold;
+        final double criticalThreshold;
+        final double criticalBoldThreshold;
+
+        NametagSettings(double viewDistance, int maxTargetsPerViewer, int historyLimit, boolean showEmpty,
+                double moveThresholdSquared, String format, String lowColor, String mediumColor, String highColor,
+                String criticalColor, String criticalBoldColor, double mediumThreshold, double highThreshold,
+                double criticalThreshold, double criticalBoldThreshold) {
+            this.viewDistance = viewDistance;
+            this.maxTargetsPerViewer = maxTargetsPerViewer;
+            this.historyLimit = historyLimit;
+            this.showEmpty = showEmpty;
+            this.moveThresholdSquared = moveThresholdSquared;
+            this.format = format;
+            this.lowColor = lowColor;
+            this.mediumColor = mediumColor;
+            this.highColor = highColor;
+            this.criticalColor = criticalColor;
+            this.criticalBoldColor = criticalBoldColor;
+            this.mediumThreshold = mediumThreshold;
+            this.highThreshold = highThreshold;
+            this.criticalThreshold = criticalThreshold;
+            this.criticalBoldThreshold = criticalBoldThreshold;
         }
     }
 }

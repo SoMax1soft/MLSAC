@@ -64,6 +64,5 @@ profile-info:
   - "&7Sens: &f{SENS}%"
   - "&7Client: &f{CLIENT}"
   - "&7Detections (>80%): &f{DETECTIONS}"
-  - "&7Cheat-List profile: &6https://mlsac.wtf/dashboard/leaderboard/history/player/{PLAYER}"
 
 analytics-join-alert: "Player found in cheat-list database &e{PLAYER} &7({DETECTIONS_COLORED} alerts)"

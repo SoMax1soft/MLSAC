@@ -27,6 +27,8 @@ import okhttp3.Response;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
@@ -34,11 +36,17 @@ public class AnalyticsClient {
     private final OkHttpClient httpClient;
     private final String baseUrl;
     private final Logger logger;
+    private final ExecutorService executor;
     private final Map<String, AnalyticsResult> cache = new ConcurrentHashMap<>();
 
     public AnalyticsClient(String baseUrl, Logger logger) {
         this.baseUrl = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
         this.logger = logger;
+        this.executor = Executors.newFixedThreadPool(2, runnable -> {
+            Thread thread = new Thread(runnable, "mlsac-analytics-worker");
+            thread.setDaemon(true);
+            return thread;
+        });
         this.httpClient = new OkHttpClient.Builder()
                 .connectTimeout(5, TimeUnit.SECONDS)
                 .readTimeout(5, TimeUnit.SECONDS)
@@ -52,9 +60,11 @@ public class AnalyticsClient {
             return CompletableFuture.completedFuture(cached);
         }
 
+        String cacheKey = playerName.toLowerCase();
         return CompletableFuture.supplyAsync(() -> {
             try {
-                String url = baseUrl + "/analytics/check/" + playerName;
+                String encodedName = java.net.URLEncoder.encode(playerName, java.nio.charset.StandardCharsets.UTF_8.name());
+                String url = baseUrl + "/analytics/check/" + encodedName;
                 Request request = new Request.Builder()
                         .url(url)
                         .get()
@@ -62,6 +72,7 @@ public class AnalyticsClient {
 
                 try (Response response = httpClient.newCall(request).execute()) {
                     if (!response.isSuccessful() || response.body() == null) {
+                        cache.put(cacheKey, AnalyticsResult.NOT_FOUND);
                         return AnalyticsResult.NOT_FOUND;
                     }
 
@@ -70,11 +81,13 @@ public class AnalyticsClient {
 
                     boolean success = json.has("success") && json.get("success").getAsBoolean();
                     if (!success) {
+                        cache.put(cacheKey, AnalyticsResult.NOT_FOUND);
                         return AnalyticsResult.NOT_FOUND;
                     }
 
                     JsonObject data = json.getAsJsonObject("data");
                     if (data == null) {
+                        cache.put(cacheKey, AnalyticsResult.NOT_FOUND);
                         return AnalyticsResult.NOT_FOUND;
                     }
 
@@ -82,14 +95,14 @@ public class AnalyticsClient {
                     int totalDetections = data.has("totalDetections") ? data.get("totalDetections").getAsInt() : 0;
 
                     AnalyticsResult result = new AnalyticsResult(isFound, totalDetections);
-                    cache.put(playerName.toLowerCase(), result);
+                    cache.put(cacheKey, result);
                     return result;
                 }
             } catch (Exception e) {
                 logger.warning("Failed to check analytics for " + playerName + ": " + e.getMessage());
                 return AnalyticsResult.NOT_FOUND;
             }
-        });
+        }, executor);
     }
 
     public void invalidateCache(String playerName) {
@@ -98,6 +111,12 @@ public class AnalyticsClient {
 
     public void clearCache() {
         cache.clear();
+    }
+
+    public void shutdown() {
+        executor.shutdownNow();
+        httpClient.dispatcher().cancelAll();
+        httpClient.connectionPool().evictAll();
     }
 
     public static class AnalyticsResult {

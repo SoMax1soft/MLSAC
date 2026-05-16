@@ -24,9 +24,13 @@
 package wtf.mlsac.server;
 
 import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
 import wtf.mlsac.Main;
 import wtf.mlsac.config.Config;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 
 public class AIClientProvider {
@@ -34,6 +38,7 @@ public class AIClientProvider {
     private final Logger logger;
     private IAIClient currentClient;
     private Config config;
+    private final Set<UUID> onlinePlayers;
     private volatile boolean connecting = false;
     private volatile String clientType = "none";
 
@@ -41,6 +46,10 @@ public class AIClientProvider {
         this.plugin = plugin;
         this.config = config;
         this.logger = plugin.getLogger();
+        this.onlinePlayers = ConcurrentHashMap.newKeySet();
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            this.onlinePlayers.add(player.getUniqueId());
+        }
     }
 
     public CompletableFuture<Boolean> initialize() {
@@ -77,7 +86,7 @@ public class AIClientProvider {
                 plugin,
                 serverAddress,
                 apiKey,
-                () -> Bukkit.getOnlinePlayers().size(),
+                () -> onlinePlayers.size(),
                 config.isDebug());
         this.currentClient = httpClient;
         this.clientType = "HTTP";
@@ -146,5 +155,13 @@ public class AIClientProvider {
 
     public String getClientType() {
         return clientType;
+    }
+
+    public void handlePlayerJoin(UUID playerId) {
+        onlinePlayers.add(playerId);
+    }
+
+    public void handlePlayerQuit(UUID playerId) {
+        onlinePlayers.remove(playerId);
     }
 }

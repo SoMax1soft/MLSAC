@@ -42,12 +42,12 @@ public class BukkitSchedulerAdapter implements SchedulerAdapter {
     }
     @Override
     public ScheduledTask runSyncDelayed(Runnable task, long delayTicks) {
-        BukkitTask bukkitTask = scheduler.runTaskLater(plugin, task, delayTicks);
+        BukkitTask bukkitTask = scheduler.runTaskLater(plugin, task, Math.max(0L, delayTicks));
         return new BukkitScheduledTask(bukkitTask);
     }
     @Override
     public ScheduledTask runSyncRepeating(Runnable task, long delayTicks, long periodTicks) {
-        BukkitTask bukkitTask = scheduler.runTaskTimer(plugin, task, delayTicks, periodTicks);
+        BukkitTask bukkitTask = scheduler.runTaskTimer(plugin, task, Math.max(0L, delayTicks), Math.max(1L, periodTicks));
         return new BukkitScheduledTask(bukkitTask);
     }
     @Override
@@ -57,12 +57,12 @@ public class BukkitSchedulerAdapter implements SchedulerAdapter {
     }
     @Override
     public ScheduledTask runAsyncDelayed(Runnable task, long delayTicks) {
-        BukkitTask bukkitTask = scheduler.runTaskLaterAsynchronously(plugin, task, delayTicks);
+        BukkitTask bukkitTask = scheduler.runTaskLaterAsynchronously(plugin, task, Math.max(0L, delayTicks));
         return new BukkitScheduledTask(bukkitTask);
     }
     @Override
     public ScheduledTask runAsyncRepeating(Runnable task, long delayTicks, long periodTicks) {
-        BukkitTask bukkitTask = scheduler.runTaskTimerAsynchronously(plugin, task, delayTicks, periodTicks);
+        BukkitTask bukkitTask = scheduler.runTaskTimerAsynchronously(plugin, task, Math.max(0L, delayTicks), Math.max(1L, periodTicks));
         return new BukkitScheduledTask(bukkitTask);
     }
     @Override

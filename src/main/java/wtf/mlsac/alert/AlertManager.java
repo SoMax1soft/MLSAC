@@ -31,6 +31,7 @@ import wtf.mlsac.config.Config;
 import wtf.mlsac.config.MessagesConfig;
 import wtf.mlsac.scheduler.SchedulerAdapter;
 import wtf.mlsac.scheduler.SchedulerManager;
+import wtf.mlsac.scheduler.ServerType;
 import wtf.mlsac.util.ColorUtil;
 import java.util.Set;
 import java.util.UUID;
@@ -97,17 +98,7 @@ public class AlertManager {
 
     public void sendAlert(String suspectName, double probability, double buffer, String modelName) {
         String message = formatAlertMessage(suspectName, probability, buffer, modelName);
-        scheduler.runSync(() -> {
-            for (UUID uuid : playersWithAlerts) {
-                Player player = Bukkit.getPlayer(uuid);
-                if (player != null && player.isOnline() && canReceiveAlerts(player)) {
-                    player.sendMessage(message);
-                }
-            }
-            if (config.isAiConsoleAlerts()) {
-                logger.info(ColorUtil.stripColors(message));
-            }
-        });
+        sendMessageToAlertSubscribers(message, config.isAiConsoleAlerts() ? ColorUtil.stripColors(message) : null);
     }
 
     public void sendAlert(String suspectName, double probability, double buffer, int vl) {
@@ -116,6 +107,48 @@ public class AlertManager {
 
     public void sendAlert(String suspectName, double probability, double buffer, int vl, String modelName) {
         String message = formatAlertMessage(suspectName, probability, buffer, vl, modelName);
+        sendMessageToAlertSubscribers(message, config.isAiConsoleAlerts() ? ColorUtil.stripColors(message) : null);
+    }
+
+    public void sendMessageToPermittedPlayers(String message, String consoleMessage) {
+        if (SchedulerManager.getServerType() == ServerType.FOLIA) {
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                scheduler.runEntitySync(player, () -> {
+                    if (player.isOnline() && canReceiveAlerts(player)) {
+                        player.sendMessage(message);
+                    }
+                });
+            }
+            logConsoleMessage(consoleMessage);
+            return;
+        }
+
+        scheduler.runSync(() -> {
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                if (player.isOnline() && canReceiveAlerts(player)) {
+                    player.sendMessage(message);
+                }
+            }
+            logConsoleMessage(consoleMessage);
+        });
+    }
+
+    private void sendMessageToAlertSubscribers(String message, String consoleMessage) {
+        if (SchedulerManager.getServerType() == ServerType.FOLIA) {
+            for (UUID uuid : playersWithAlerts) {
+                Player player = Bukkit.getPlayer(uuid);
+                if (player != null && player.isOnline()) {
+                    scheduler.runEntitySync(player, () -> {
+                        if (player.isOnline() && canReceiveAlerts(player)) {
+                            player.sendMessage(message);
+                        }
+                    });
+                }
+            }
+            logConsoleMessage(consoleMessage);
+            return;
+        }
+
         scheduler.runSync(() -> {
             for (UUID uuid : playersWithAlerts) {
                 Player player = Bukkit.getPlayer(uuid);
@@ -123,10 +156,14 @@ public class AlertManager {
                     player.sendMessage(message);
                 }
             }
-            if (config.isAiConsoleAlerts()) {
-                logger.info(ColorUtil.stripColors(message));
-            }
+            logConsoleMessage(consoleMessage);
         });
+    }
+
+    private void logConsoleMessage(String consoleMessage) {
+        if (consoleMessage != null && !consoleMessage.isEmpty()) {
+            logger.info(consoleMessage);
+        }
     }
 
     private String formatAlertMessage(String suspectName, double probability, double buffer, String modelName) {

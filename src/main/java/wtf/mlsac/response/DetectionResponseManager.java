@@ -1,6 +1,5 @@
 package wtf.mlsac.response;
 
-import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
@@ -14,7 +13,6 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -188,7 +186,7 @@ public class DetectionResponseManager {
     }
 
     private void markCooldown(UUID playerId, Config.TrollActionConfig action, long now) {
-        trollCooldowns.computeIfAbsent(playerId, ignored -> new HashMap<>())
+        trollCooldowns.computeIfAbsent(playerId, ignored -> new ConcurrentHashMap<>())
                 .put(action.getType().toLowerCase(Locale.ROOT), now);
     }
 
@@ -201,10 +199,9 @@ public class DetectionResponseManager {
                 .replace("{PLAYER}", player.getName())
                 .replace("{DETECTIONS}", String.valueOf(detections))
                 .replace("{PROBABILITY}", String.format("%.2f", probability)));
-        Bukkit.getOnlinePlayers().stream()
-                .filter(online -> online.hasPermission(wtf.mlsac.Permissions.ALERTS)
-                        || online.hasPermission(wtf.mlsac.Permissions.ADMIN))
-                .forEach(online -> online.sendMessage(message));
+        if (plugin.getAlertManager() != null) {
+            plugin.getAlertManager().sendMessageToPermittedPlayers(message, null);
+        }
     }
 
     private int countDetectionsWithin(Deque<Long> timestamps, long now, int windowSeconds) {

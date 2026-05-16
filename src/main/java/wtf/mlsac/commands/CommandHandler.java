@@ -194,9 +194,10 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
     private void startTracking(Player admin, Player target) {
         UUID adminId = admin.getUniqueId();
         UUID targetId = target.getUniqueId();
+        String targetName = target.getName();
         stopTracking(admin);
         probTracking.put(adminId, targetId);
-        ScheduledTask task = SchedulerManager.getAdapter().runSyncRepeating(() -> {
+        ScheduledTask task = SchedulerManager.getAdapter().runEntitySyncRepeating(admin, () -> {
             Player adminPlayer = Bukkit.getPlayer(adminId);
             Player targetPlayer = Bukkit.getPlayer(targetId);
             if (adminPlayer == null || !adminPlayer.isOnline()) {
@@ -211,14 +212,14 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
             AIPlayerData data = aiCheck.getPlayerData(targetId);
             String message;
             if (data == null) {
-                message = ColorUtil.colorize("&7" + targetPlayer.getName() + ": &eНет данных");
+                message = ColorUtil.colorize("&7" + targetName + ": &eНет данных");
             } else {
                 double buffer = data.getBuffer();
                 int vl = plugin.getViolationManager().getViolationLevel(targetId);
                 String template = plugin.getMessagesConfig().getMessage("actionbar-format",
-                        targetPlayer.getName(), data.getLastProbability(), buffer, vl);
+                        targetName, data.getLastProbability(), buffer, vl);
                 template = ProbabilityFormatUtil.applyModelPlaceholders(template, data)
-                        .replace("{PLAYER}", targetPlayer.getName());
+                        .replace("{PLAYER}", targetName);
                 message = ColorUtil.colorize(template);
             }
             sendActionBar(adminPlayer, message);
