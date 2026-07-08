@@ -33,6 +33,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
 import wtf.mlsac.Main;
 import wtf.mlsac.util.ColorUtil;
+import wtf.mlsac.util.SecurityUtil;
 
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
@@ -66,12 +67,39 @@ final class MenuActionDispatcher {
                 admin.sendMessage(ColorUtil.colorize(applyPlaceholders(argument, context))));
         prefixActions.put("[teleport]", (argument, context) -> admin.teleport(context.target()));
         prefixActions.put("[gamemode]", this::setGamemode);
-        prefixActions.put("[console]", (argument, context) ->
-                Bukkit.dispatchCommand(Bukkit.getConsoleSender(), applyPlaceholders(argument, context)));
-        prefixActions.put("[player]", (argument, context) ->
-                admin.performCommand(applyPlaceholders(argument, context)));
-        prefixActions.put("[admin]", (argument, context) ->
-                admin.performCommand(applyPlaceholders(argument, context)));
+        prefixActions.put("[console]", (argument, context) -> {
+            if (blockUnsafeTargetName(context)) {
+                return;
+            }
+            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), applyPlaceholders(argument, context));
+        });
+        prefixActions.put("[player]", (argument, context) -> {
+            if (blockUnsafeTargetName(context)) {
+                return;
+            }
+            admin.performCommand(applyPlaceholders(argument, context));
+        });
+        prefixActions.put("[admin]", (argument, context) -> {
+            if (blockUnsafeTargetName(context)) {
+                return;
+            }
+            admin.performCommand(applyPlaceholders(argument, context));
+        });
+    }
+
+    /**
+     * Command actions substitute {PLAYER} into a command line; a target name with spaces or
+     * non-standard characters could smuggle extra arguments and hit an unrelated player.
+     */
+    private boolean blockUnsafeTargetName(MenuActionContext context) {
+        String targetName = context.target().getName();
+        if (SecurityUtil.isSafeCommandName(targetName)) {
+            return false;
+        }
+        plugin.getLogger().warning("[Menu] Blocked command action for '" + admin.getName()
+                + "': target name '" + targetName + "' is unsafe for command substitution");
+        admin.sendMessage(ColorUtil.colorize("&cAction blocked: target name contains unsafe characters."));
+        return true;
     }
 
     /** Runs every action configured under {@code gui.actions.<click>} for the given click. */

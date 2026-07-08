@@ -43,6 +43,7 @@ import wtf.mlsac.server.FlatBufferSerializer;
 import wtf.mlsac.server.IAIClient;
 import wtf.mlsac.violation.ViolationManager;
 import wtf.mlsac.util.GeyserUtil;
+import wtf.mlsac.util.SecurityUtil;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -51,6 +52,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 
 public class AICheck {
+    // Bounds for server-driven INVALID_SEQUENCE updates; values outside this window would let a
+    // hostile/broken backend destabilize the whole detection pipeline.
+    private static final int MIN_SEQUENCE = 5;
+    private static final int MAX_SEQUENCE = 200;
     private final Main plugin;
     private final AIClientProvider clientProvider;
     private final AlertManager alertManager;
@@ -257,6 +262,13 @@ public class AICheck {
             return;
         }
         double probability = response.getProbability();
+        // NaN/Infinity/out-of-range probabilities would blow up the violation buffer in a single
+        // response (instant kick/ban). Only [0,1] may enter the pipeline.
+        if (!SecurityUtil.isValidProbability(probability)) {
+            logger.warning("[AI] Rejected response for " + playerName + ": probability " + probability
+                    + " is outside [0,1] - corrupt or tampered API payload");
+            return;
+        }
         String modelName = response.getModel();
         boolean isOnlyAlert = config.isOnlyAlertForModel(modelName);
 
@@ -345,7 +357,12 @@ public class AICheck {
             String[] parts = error.split(":");
             if (parts.length >= 2) {
                 int newSequence = Integer.parseInt(parts[1].trim());
-                if (newSequence > 0 && newSequence != this.sequence) {
+                if (newSequence < MIN_SEQUENCE || newSequence > MAX_SEQUENCE) {
+                    logger.warning("[AI] Ignoring INVALID_SEQUENCE update to " + newSequence
+                            + " (allowed range " + MIN_SEQUENCE + "-" + MAX_SEQUENCE + ")");
+                    return;
+                }
+                if (newSequence != this.sequence) {
                     logger.info("[AI] Updating sequence from " + this.sequence + " to " + newSequence);
                     this.sequence = newSequence;
                     for (AIPlayerData data : playerData.values()) {

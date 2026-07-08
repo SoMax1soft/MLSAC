@@ -36,7 +36,9 @@ import wtf.mlsac.Permissions;
 import wtf.mlsac.alert.AlertManager;
 import wtf.mlsac.scheduler.SchedulerManager;
 import wtf.mlsac.util.ColorUtil;
+import wtf.mlsac.util.SecurityUtil;
 import java.io.BufferedReader;
+import java.util.Locale;
 import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -109,6 +111,11 @@ public class HttpAIClient implements IAIClient {
         this.apiKey = apiKey;
         this.logger = plugin.getLogger();
         this.debug = debug;
+        if (serverAddress != null && serverAddress.toLowerCase(Locale.ROOT).startsWith("http://")
+                && !serverAddress.contains("localhost") && !serverAddress.contains("127.0.0.1")) {
+            logger.warning("[HTTP] AI backend uses plaintext http:// to a remote host - predictions and"
+                    + " punish reports can be read or modified in transit. Use https:// for remote backends.");
+        }
         this.payloads = new PayloadFactory(plugin, serverName, serverFamily,
                 interServerEnabled, onlinePlayersSupplier);
         this.eventReportingEnabled = eventReportingEnabled;
@@ -201,11 +208,13 @@ public class HttpAIClient implements IAIClient {
             return;
         }
 
-        String type = JsonSupport.getString(event, "type", "alert");
-        String sourceServerName = JsonSupport.getString(event, "serverName", "unknown");
-        String playerName = JsonSupport.getString(event, "playerName", "Unknown");
-        String model = JsonSupport.getString(event, "model", "unknown");
-        String action = JsonSupport.getString(event, "action", type);
+        // Inter-server payloads come from outside this server; strip control characters and cap
+        // lengths before they reach admin chat/console.
+        String type = SecurityUtil.sanitizeChatText(JsonSupport.getString(event, "type", "alert"), 24);
+        String sourceServerName = SecurityUtil.sanitizeChatText(JsonSupport.getString(event, "serverName", "unknown"), 32);
+        String playerName = SecurityUtil.sanitizeChatText(JsonSupport.getString(event, "playerName", "Unknown"), 32);
+        String model = SecurityUtil.sanitizeChatText(JsonSupport.getString(event, "model", "unknown"), 32);
+        String action = SecurityUtil.sanitizeChatText(JsonSupport.getString(event, "action", type), 48);
         double probability = JsonSupport.getDouble(event, "probability", 0.0);
         double buffer = JsonSupport.getDouble(event, "buffer", 0.0);
         int violationLevel = (int) Math.round(JsonSupport.getDouble(event, "violationLevel", JsonSupport.getDouble(event, "vl", 0.0)));

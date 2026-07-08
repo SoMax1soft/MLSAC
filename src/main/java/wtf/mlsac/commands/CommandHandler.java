@@ -389,14 +389,32 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
             sender.sendMessage(getPrefix() + msg("usage-punish"));
             return;
         }
-        Player target = Bukkit.getPlayer(args[1]);
+        // Exact-name lookup only: Bukkit.getPlayer() falls back to prefix matching and can
+        // resolve a truncated/mistyped name to an unrelated online player (e.g. an AFK one).
+        Player target = Bukkit.getPlayerExact(args[1]);
         if (target == null) {
             sender.sendMessage(getPrefix() + msg("player-not-found", "{PLAYER}", args[1]));
             return;
         }
 
         String issuer = sender instanceof Player ? sender.getName() : "CONSOLE(" + sender.getName() + ")";
-        plugin.getLogger().info("[Penalty] /mlsac punish " + target.getName() + " issued by " + issuer);
+        int vl = plugin.getViolationManager().getViolationLevel(target.getUniqueId());
+        AIPlayerData data = aiCheck.getPlayerData(target.getUniqueId());
+        double buffer = data != null ? data.getBuffer() : 0.0;
+        int detections = data != null ? data.getHighProbabilityDetections() : 0;
+        boolean confirmed = args.length >= 3 && args[2].equalsIgnoreCase("confirm");
+
+        if (vl <= 0 && buffer <= 0.0 && detections <= 0 && !confirmed) {
+            sender.sendMessage(getPrefix() + msg("punish-no-evidence", "{PLAYER}", target.getName()));
+            sender.sendMessage(msg("punish-confirm-hint", "{PLAYER}", target.getName()));
+            plugin.getLogger().info("[Penalty] /mlsac punish " + target.getName() + " BLOCKED by "
+                    + issuer + " - no evidence (VL=0, buffer=0.0, detections=0)");
+            return;
+        }
+
+        plugin.getLogger().info("[Penalty] /mlsac punish " + target.getName() + " issued by " + issuer
+                + " | VL=" + vl + " buffer=" + String.format(java.util.Locale.ROOT, "%.1f", buffer)
+                + " detections=" + detections + (confirmed ? " (confirmed override)" : ""));
         plugin.getViolationManager().executeMaxPunishment(target);
         if (plugin.getPluginConfig().getPunishmentCommands().isEmpty()) {
             sender.sendMessage(getPrefix() + msg("punish-no-action"));
@@ -605,6 +623,8 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
             String subCommand = args[0].toLowerCase();
             if (subCommand.equalsIgnoreCase("falsepositive") && args[1].equalsIgnoreCase("restore")) {
                 completions.addAll(filterStartsWith(getOnlinePlayerNames(), args[2]));
+            } else if (subCommand.equals("punish")) {
+                completions.addAll(filterStartsWith(List.of("confirm"), args[2]));
             } else if (args[0].equalsIgnoreCase("start")) {
                 List<String> labels = Arrays.stream(Label.values())
                         .map(Label::name)

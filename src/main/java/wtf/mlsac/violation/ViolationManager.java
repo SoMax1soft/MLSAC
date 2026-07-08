@@ -41,6 +41,7 @@ import wtf.mlsac.penalty.PunishmentLadder;
 import wtf.mlsac.scheduler.ScheduledTask;
 import wtf.mlsac.scheduler.SchedulerManager;
 import wtf.mlsac.server.IAIClient;
+import wtf.mlsac.util.SecurityUtil;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -49,6 +50,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
@@ -57,6 +59,10 @@ public class ViolationManager {
     private static final int MAX_KICK_HISTORY = 10;
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss");
     private static final long PUNISHMENT_COOLDOWN_MS = 5000;
+    // Raw (unprefixed) ladder commands whose first token is one of these still count as
+    // punishments for the cooldown and API reporting, e.g. the default "kick {PLAYER} ...".
+    private static final Set<String> DESTRUCTIVE_COMMAND_TOKENS = Set.of(
+            "kick", "ban", "tempban", "banip", "ban-ip", "ipban", "mute", "tempmute", "jail", "punish");
     private final Main plugin;
     private final AlertManager alertManager;
     private final Logger logger;
@@ -197,7 +203,7 @@ public class ViolationManager {
         String command = getApplicablePunishmentCommand(newVl);
         if (command != null) {
             ActionType actionType = ActionType.fromCommand(command);
-            if (actionType.isPunishment()) {
+            if (isPunishingAction(command, actionType)) {
                 Long previousTime = lastPunishmentTime.get(uuid);
                 if (previousTime != null && (now - previousTime) < PUNISHMENT_COOLDOWN_MS) {
                     logger.info("[Penalty] " + player.getName() + " punishment on cooldown, skipping " + actionType);
@@ -207,6 +213,31 @@ public class ViolationManager {
             }
             executeCommand(command, player, probability, buffer, newVl);
         }
+    }
+
+    /**
+     * Punishment classifier for the cooldown and API reporting: prefixed animation commands plus
+     * raw commands whose first token is a known kick/ban/mute command (the default ladder uses an
+     * unprefixed {@code kick ...}, which is RAW and would otherwise bypass the cooldown).
+     */
+    private boolean isPunishingAction(String command, ActionType actionType) {
+        if (actionType.isPunishment()) {
+            return true;
+        }
+        if (actionType != ActionType.RAW || command == null) {
+            return false;
+        }
+        String stripped = command.trim().toLowerCase(Locale.ROOT);
+        int space = stripped.indexOf(' ');
+        String first = space == -1 ? stripped : stripped.substring(0, space);
+        if (first.startsWith("/")) {
+            first = first.substring(1);
+        }
+        int colon = first.indexOf(':');
+        if (colon != -1) {
+            first = first.substring(colon + 1);
+        }
+        return DESTRUCTIVE_COMMAND_TOKENS.contains(first);
     }
 
     public int incrementViolationLevel(UUID playerId) {
@@ -247,6 +278,23 @@ public class ViolationManager {
                 + " buffer=" + String.format(Locale.ROOT, "%.1f", buffer)
                 + " action=" + actionType
                 + " command='" + command + "'");
+        // Names with spaces or non-standard characters (Geyser/Floodgate prefixes, cracked-server
+        // exotics) must never be substituted into a console command: "kick Steve Notch reason"
+        // would punish a different player. Fall back to a direct API kick instead.
+        if (actionType.isConsoleCommand() && !SecurityUtil.isSafeCommandName(player.getName())) {
+            logger.warning("[Penalty] Player name '" + player.getName()
+                    + "' is unsafe for command substitution - skipping '" + command
+                    + "', kicking directly via API instead");
+            addKickRecord(new KickRecord(player.getName(), probability, buffer, vl, "DIRECT_KICK (unsafe name)"));
+            String kickReason = "MLSAC Detection (VL:" + vl + ")";
+            SchedulerManager.getAdapter().runEntitySync(player, () -> {
+                if (player.isOnline()) {
+                    player.kickPlayer(kickReason);
+                }
+            });
+            reportPunish(player, probability, buffer, vl, "kick", "DIRECT_KICK");
+            return;
+        }
         PenaltyContext context = PenaltyContext.builder()
                 .playerName(player.getName())
                 .violationLevel(vl)
@@ -255,12 +303,20 @@ public class ViolationManager {
                 .build();
         addKickRecord(new KickRecord(player.getName(), probability, buffer, vl, command));
         penaltyExecutor.execute(command, context);
-        if (actionType.isPunishment() && plugin.getAiClientProvider() != null) {
-            IAIClient client = plugin.getAiClientProvider().get();
-            if (client != null) {
-                client.reportPunish(player.getUniqueId().toString(), player.getName(), "unknown",
-                        probability, buffer, vl, actionType.name().toLowerCase(), command);
-            }
+        if (isPunishingAction(command, actionType)) {
+            reportPunish(player, probability, buffer, vl, actionType.name().toLowerCase(Locale.ROOT), command);
+        }
+    }
+
+    private void reportPunish(Player player, double probability, double buffer, int vl,
+            String action, String command) {
+        if (plugin.getAiClientProvider() == null) {
+            return;
+        }
+        IAIClient client = plugin.getAiClientProvider().get();
+        if (client != null) {
+            client.reportPunish(player.getUniqueId().toString(), player.getName(), "unknown",
+                    probability, buffer, vl, action, command);
         }
     }
 

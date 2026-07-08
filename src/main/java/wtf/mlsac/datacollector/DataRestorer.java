@@ -2,6 +2,7 @@ package wtf.mlsac.datacollector;
 
 import org.bukkit.plugin.java.JavaPlugin;
 import wtf.mlsac.data.TickData;
+import wtf.mlsac.util.SecurityUtil;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -29,7 +30,7 @@ public class DataRestorer {
         }
 
         String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
-        String fileName = playerName + "_" + timestamp + ".csv";
+        String fileName = SecurityUtil.sanitizeFileName(playerName) + "_" + timestamp + ".csv";
         File file = new File(restoredDataFolder, fileName);
 
         try (PrintWriter writer = new PrintWriter(new FileWriter(file))) {

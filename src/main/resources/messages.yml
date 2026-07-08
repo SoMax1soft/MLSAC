@@ -58,7 +58,7 @@ usage-prob: '&7/mlsac prob <player>'
 usage-datastatus: '&7/mlsac datastatus'
 usage-reload: '&7/mlsac reload'
 usage-suspects: '&7/mlsac suspects'
-usage-punish: '&7/mlsac punish <player>'
+usage-punish: '&7/mlsac punish <player> [confirm]'
 usage-profile: '&7/mlsac profile <player>'
 usage-kicklist: '&7/mlsac kicklist [page]'
 usage-falsepositive: '&7/mlsac falsepositive restore <player>'
@@ -71,6 +71,8 @@ suspects-invalid-action: '&cInvalid action: &f{ACTION}'
 
 punish-success: '&aPunished &f{PLAYER} &7({ACTION})'
 punish-no-action: '&cNo punishment actions'
+punish-no-evidence: '&c{PLAYER} has no detections &7(VL, buffer and detection count are all zero) &c- punishment cancelled'
+punish-confirm-hint: '&7Use &f/mlsac punish {PLAYER} confirm &7to punish anyway'
 
 profile-header: '&f&l● Profile: &f{PLAYER} &f&l●'
 profile-info:

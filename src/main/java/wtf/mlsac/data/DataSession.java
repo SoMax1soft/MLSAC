@@ -135,7 +135,8 @@ public class DataSession {
                 .replaceAll("[/\\\\?%*:|\"<>']", "-");
             statusForFilename = statusForFilename + "_" + sanitized;
         }
-        return String.format("%s_%s_%s.csv", statusForFilename, playerName, timestamp);
+        return String.format("%s_%s_%s.csv", statusForFilename,
+                wtf.mlsac.util.SecurityUtil.sanitizeFileName(playerName), timestamp);
     }
     public String generateCsvContent() {
         lock.readLock().lock();
