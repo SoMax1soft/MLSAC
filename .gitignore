@@ -3,3 +3,11 @@
 /build
 /.idea
 /bin
+
+# Local tooling / editor state
+/.claude
+/temp_pe
+
+# Test-run artifacts
+/.jqwik-database
+*.log

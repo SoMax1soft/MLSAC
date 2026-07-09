@@ -17,7 +17,7 @@
  *
  * This file is based on GPLv3 licensed work and includes modifications.
  * Derived from:
- *   - SlothAC (© 2025 KaelusMC, https://github.com/KaelusMC/SlothAC)
+ *   - Shard (© 2025 KaelusAI, https://github.com/KaelusAI/Shard)
  *   - Grim (© 2025 GrimAnticheat, https://github.com/GrimAnticheat/Grim)
  *   - Client-side project (GPLv3: https://github.com/MLSAC/client-side)
  *
@@ -53,7 +53,6 @@ public class AIPlayerData {
     private volatile double buffer;
     private volatile boolean bufferIncreasing;
     private volatile double lastProbability;
-    private volatile boolean pendingRequest;
     private volatile boolean isBedrock;
     private volatile int highProbabilityDetections;
     private final Deque<TickData> tickHistory = new ArrayDeque<>(5000);
@@ -79,7 +78,6 @@ public class AIPlayerData {
         this.buffer = 0.0;
         this.bufferIncreasing = false;
         this.lastProbability = 0.0;
-        this.pendingRequest = false;
         this.isBedrock = false;
         this.highProbabilityDetections = 0;
     }
@@ -144,27 +142,9 @@ public class AIPlayerData {
     public boolean shouldSendData(int step, int sequence) {
         lock.readLock().lock();
         try {
-            // SlothAC-style: fire every `step` ticks once the rolling window is full, without
+            // Shard-style: fire every `step` ticks once the rolling window is full, without
             // waiting for the previous request to return (no in-flight gate).
             return ticksStep >= step && tickBuffer.size() >= sequence;
-        } finally {
-            lock.readLock().unlock();
-        }
-    }
-
-    public void setPendingRequest(boolean pending) {
-        lock.writeLock().lock();
-        try {
-            this.pendingRequest = pending;
-        } finally {
-            lock.writeLock().unlock();
-        }
-    }
-
-    public boolean isPendingRequest() {
-        lock.readLock().lock();
-        try {
-            return pendingRequest;
         } finally {
             lock.readLock().unlock();
         }
@@ -209,7 +189,6 @@ public class AIPlayerData {
             aimProcessor.reset();
             ticksSinceAttack = sequence + 1;
             ticksStep = 0;
-            pendingRequest = false;
             bufferThresholdLatched.clear();
         } finally {
             lock.writeLock().unlock();
@@ -223,7 +202,6 @@ public class AIPlayerData {
             tickBuffer.clear();
             ticksSinceAttack = this.sequence + 1;
             ticksStep = 0;
-            pendingRequest = false;
             aimProcessor.reset();
         } finally {
             lock.writeLock().unlock();

@@ -17,7 +17,7 @@
  *
  * This file is based on GPLv3 licensed work and includes modifications.
  * Derived from:
- *   - SlothAC (© 2025 KaelusMC, https://github.com/KaelusMC/SlothAC)
+ *   - Shard (© 2025 KaelusAI, https://github.com/KaelusAI/Shard)
  *   - Grim (© 2025 GrimAnticheat, https://github.com/GrimAnticheat/Grim)
  *   - Client-side project (GPLv3: https://github.com/MLSAC/client-side)
  */
@@ -44,8 +44,10 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.IntSupplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -55,10 +57,18 @@ public class HttpAIClient implements IAIClient {
     private static final int SHUTDOWN_TIMEOUT_SECONDS = 5;
     private static final int MAX_RETRY_ATTEMPTS = 3;
     private static final long INITIAL_BACKOFF_MS = 1000;
+    // Circuit breaker: this many connection-level failures in a row (timeouts, refused
+    // connections) mark the backend unreachable and suspend all outgoing requests.
+    private static final int NETWORK_FAILURE_THRESHOLD = 3;
+    private static final long RECONNECT_INITIAL_DELAY_MS = 10_000;
+    private static final long RECONNECT_MAX_DELAY_MS = 300_000;
+    private static final int MAX_IN_FLIGHT_PREDICTS = 8;
     private static final long HEARTBEAT_INTERVAL_MS = 30000;
     private static final long REPORT_STATS_INTERVAL_MS = 30000;
     private static final long INTERSERVER_EVENT_POLL_INTERVAL_MS = 3000;
-    private static final int CONNECT_TIMEOUT_SECONDS = 10;
+    // Kept short: a healthy backend accepts a TCP connection near-instantly, and while the
+    // backend is down every queued request blocks a worker thread for this long.
+    private static final int CONNECT_TIMEOUT_SECONDS = 4;
     private static final int READ_TIMEOUT_SECONDS = 30;
     private static final int WRITE_TIMEOUT_SECONDS = 30;
     private static final long PERIODIC_CHECK_INTERVAL_MS = 60000;
@@ -95,6 +105,9 @@ public class HttpAIClient implements IAIClient {
     private final WarningThrottle duplicateNameWarning =
             new WarningThrottle(DUPLICATE_NAME_WARNING_LIMIT, DUPLICATE_NAME_WARNING_INTERVAL_MS);
     private final RecentEventCache seenInterserverEvents = new RecentEventCache(INTERSERVER_EVENT_CACHE_LIMIT);
+    private final AtomicInteger consecutiveNetworkFailures = new AtomicInteger();
+    private final AtomicInteger reconnectAttempts = new AtomicInteger();
+    private final AtomicInteger inFlightPredicts = new AtomicInteger();
 
     public HttpAIClient(Main plugin, String serverAddress, String apiKey,
                         IntSupplier onlinePlayersSupplier, boolean debug) {
@@ -286,6 +299,8 @@ public class HttpAIClient implements IAIClient {
                 }
 
                 connected.set(true);
+                consecutiveNetworkFailures.set(0);
+                reconnectAttempts.set(0);
                 logger.info("[HTTP] Connected successfully. Session: " + sessionId);
 
                 startHeartbeat();
@@ -328,7 +343,12 @@ public class HttpAIClient implements IAIClient {
             return CompletableFuture.completedFuture(false);
         }
         if (attempt >= MAX_RETRY_ATTEMPTS) {
-            logger.severe("[HTTP] Max retry attempts reached");
+            logger.severe("[HTTP] Max retry attempts reached - continuing to retry in the background");
+            // Without this the plugin would stay offline until a manual reload whenever the
+            // backend happened to be down during startup: the periodic check and reconnect chain
+            // were only ever started from a successful connect().
+            startPeriodicCheck();
+            scheduleReconnect();
             return CompletableFuture.completedFuture(false);
         }
         return connect().thenCompose(success -> {
@@ -402,6 +422,7 @@ public class HttpAIClient implements IAIClient {
                         .build();
 
                 try (Response response = httpClient.newCall(request).execute()) {
+                    recordNetworkSuccess();
                     ResponseBody respBody = response.body();
                     String responseBody = respBody != null ? respBody.string() : "";
                     handleApiWarnings(responseBody);
@@ -419,6 +440,7 @@ public class HttpAIClient implements IAIClient {
                 }
             } catch (IOException e) {
                 if (debug) logger.warning("[HTTP] Heartbeat error: " + e.getMessage());
+                recordNetworkFailure("heartbeat");
             }
         }, httpExecutor);
     }
@@ -477,6 +499,7 @@ public class HttpAIClient implements IAIClient {
                         .build();
 
                 try (Response response = httpClient.newCall(request).execute()) {
+                    recordNetworkSuccess();
                     int code = response.code();
                     ResponseBody respBody = response.body();
                     String responseBody = respBody != null ? respBody.string() : "";
@@ -499,6 +522,7 @@ public class HttpAIClient implements IAIClient {
                 }
             } catch (IOException e) {
                 if (debug) logger.warning("[HTTP] ReportStats error: " + e.getMessage());
+                recordNetworkFailure("reportstats");
             }
         }, httpExecutor);
     }
@@ -524,6 +548,7 @@ public class HttpAIClient implements IAIClient {
                         .build();
 
                 try (Response response = httpClient.newCall(request).execute()) {
+                    recordNetworkSuccess();
                     int code = response.code();
                     ResponseBody respBody = response.body();
                     String responseBody = respBody != null ? respBody.string() : "";
@@ -543,6 +568,7 @@ public class HttpAIClient implements IAIClient {
                 }
             } catch (IOException e) {
                 if (debug) logger.warning("[HTTP] Inter-server event poll error: " + e.getMessage());
+                recordNetworkFailure("interserver-poll");
             } finally {
                 interserverPollInFlight.set(false);
             }
@@ -581,7 +607,12 @@ public class HttpAIClient implements IAIClient {
             logger.info("[HTTP] Reconnect already scheduled, skipping");
             return;
         }
-        logger.info("[HTTP] Scheduling reconnect in 10 seconds...");
+        int attempt = reconnectAttempts.getAndIncrement();
+        long delayMs = Math.min(RECONNECT_INITIAL_DELAY_MS << Math.min(attempt, 5), RECONNECT_MAX_DELAY_MS);
+        // Jitter so a fleet of servers does not reconnect in lockstep after a backend outage.
+        delayMs += ThreadLocalRandom.current().nextLong(delayMs / 5 + 1);
+        logger.info("[HTTP] Scheduling reconnect in " + (delayMs / 1000) + "s (attempt " + (attempt + 1) + ")");
+        long delayTicks = Math.max(1, delayMs / 50);
         reconnect.reschedule(() -> SchedulerManager.getAdapter().runAsyncDelayed(() -> {
             reconnect.clearReference();
             if (!shuttingDown.get() && autoReconnectEnabled && !connected.get()) {
@@ -593,7 +624,7 @@ public class HttpAIClient implements IAIClient {
                     }
                 });
             }
-        }, 200));
+        }, delayTicks));
     }
 
     @Override
@@ -616,18 +647,31 @@ public class HttpAIClient implements IAIClient {
         }
 
         return io.reactivex.rxjava3.core.Observable.create(emitter -> {
+            // Cap queued+running predicts. Windows overlap by 75%, so dropping one is harmless -
+            // unlike letting a slow or dead backend build an unbounded executor queue of stale
+            // requests that each block a worker thread for the full timeout.
+            if (inFlightPredicts.incrementAndGet() > MAX_IN_FLIGHT_PREDICTS) {
+                inFlightPredicts.decrementAndGet();
+                if (debug) {
+                    logger.warning("[HTTP] Dropping predict for " + playerName + ": "
+                            + MAX_IN_FLIGHT_PREDICTS + " requests already in flight");
+                }
+                if (!emitter.isDisposed()) {
+                    emitter.onComplete();
+                }
+                return;
+            }
             CompletableFuture.runAsync(() -> {
                 try {
                     JsonObject payload = payloads.predict(playerData, playerUuid, playerName, sessionId);
-                    boolean streamed = executeStreamingPredict(payload, emitter);
-                    if (!streamed && !emitter.isDisposed()) {
-                        AIResponse response = executeLegacyPredict(payload);
-                        emitter.onNext(response);
-                    }
+                    executeStreamingPredict(payload, emitter);
                     if (!emitter.isDisposed()) {
                         emitter.onComplete();
                     }
                 } catch (Exception e) {
+                    if (e instanceof IOException || e.getCause() instanceof IOException) {
+                        recordNetworkFailure("predict");
+                    }
                     String msg = e.getMessage();
                     if (msg != null && (msg.contains("Server error") || msg.contains("503") || msg.contains("500"))) {
                         enterServerErrorState(msg);
@@ -635,30 +679,20 @@ public class HttpAIClient implements IAIClient {
                     if (!emitter.isDisposed()) {
                         emitter.onError(new RuntimeException(e.getMessage()));
                     }
+                } finally {
+                    inFlightPredicts.decrementAndGet();
                 }
             }, httpExecutor);
         });
     }
 
-    private AIResponse executeLegacyPredict(JsonObject json) throws IOException {
-        String url = serverAddress + "/api/v1/predict";
-        Request request = new Request.Builder()
-                .url(url)
-                .post(jsonBody(json))
-                .header("X-API-Key", apiKey)
-                .build();
-
-        try (Response response = httpClient.newCall(request).execute()) {
-            ResponseBody respBody = response.body();
-            String responseBody = respBody != null ? respBody.string() : "";
-            int code = response.code();
-            handleApiWarnings(responseBody);
-            handlePredictStatus(code, responseBody);
-            return JsonSupport.parsePredictResponse(responseBody);
-        }
-    }
-
-    private boolean executeStreamingPredict(JsonObject json,
+    /**
+     * The only predict transport: NDJSON streaming from {@code /api/v1/predict-stream} (one line
+     * per model, terminated by a {@code done} line). The legacy single-shot {@code /api/v1/predict}
+     * fallback was removed on purpose - it doubled backend load whenever a stream completed without
+     * predictions, and every supported backend serves the stream endpoint.
+     */
+    private void executeStreamingPredict(JsonObject json,
             io.reactivex.rxjava3.core.ObservableEmitter<AIResponse> emitter) throws IOException {
         String url = serverAddress + "/api/v1/predict-stream";
         Request request = new Request.Builder()
@@ -668,23 +702,24 @@ public class HttpAIClient implements IAIClient {
                 .build();
 
         try (Response response = httpClient.newCall(request).execute()) {
+            recordNetworkSuccess();
             int code = response.code();
             if (code == 404 || code == 405) {
-                return false;
+                throw new RuntimeException("Backend does not support /api/v1/predict-stream (HTTP "
+                        + code + ") - update the inference backend");
             }
             ResponseBody respBody = response.body();
             if (respBody == null) {
                 handlePredictStatus(code, "");
-                return false;
+                return;
             }
             if (!response.isSuccessful()) {
                 String responseBody = respBody.string();
                 handleApiWarnings(responseBody);
                 handlePredictStatus(code, responseBody);
-                return false;
+                return;
             }
 
-            boolean emittedAny = false;
             try (BufferedReader reader = new BufferedReader(respBody.charStream())) {
                 String line;
                 while (!emitter.isDisposed() && (line = reader.readLine()) != null) {
@@ -703,10 +738,8 @@ public class HttpAIClient implements IAIClient {
                     }
                     AIResponse aiResponse = JsonSupport.parsePredictResponse(line);
                     emitter.onNext(aiResponse);
-                    emittedAny = true;
                 }
             }
-            return emittedAny;
         }
     }
 
@@ -820,6 +853,46 @@ public class HttpAIClient implements IAIClient {
     private void enterServerErrorState(String reason) {
         serverError.enter(System.currentTimeMillis());
         logger.warning("[HTTP] Entering server error state: " + reason);
+        scheduleReconnect();
+    }
+
+    /** Any completed HTTP round-trip (regardless of status code) proves the network path works. */
+    private void recordNetworkSuccess() {
+        consecutiveNetworkFailures.set(0);
+    }
+
+    /**
+     * Counts connection-level failures (timeouts, refused connections). HTTP error statuses do NOT
+     * go through here - they mean the backend is reachable and are handled per-endpoint. After
+     * {@link #NETWORK_FAILURE_THRESHOLD} failures in a row the backend is treated as unreachable.
+     */
+    private void recordNetworkFailure(String context) {
+        int failures = consecutiveNetworkFailures.incrementAndGet();
+        if (debug) {
+            logger.warning("[HTTP] Network failure #" + failures + " (" + context + ")");
+        }
+        if (failures >= NETWORK_FAILURE_THRESHOLD) {
+            enterConnectionLostState(context);
+        }
+    }
+
+    /**
+     * Circuit breaker for a dead/unreachable backend. Marks the client disconnected (which makes
+     * AICheck stop producing predicts instantly) and cancels the periodic senders, so an offline
+     * API is not hammered with requests that each burn a full connect timeout. Recovery runs
+     * through {@link #scheduleReconnect()} with exponential backoff; a successful connect restarts
+     * the periodic tasks.
+     */
+    private void enterConnectionLostState(String context) {
+        if (shuttingDown.get() || !connected.compareAndSet(true, false)) {
+            return;
+        }
+        logger.warning("[HTTP] Backend unreachable (" + NETWORK_FAILURE_THRESHOLD
+                + " consecutive network failures, last: " + context
+                + ") - suspending requests until reconnect");
+        heartbeat.cancel();
+        reportStats.cancel();
+        interserverEvent.cancel();
         scheduleReconnect();
     }
 

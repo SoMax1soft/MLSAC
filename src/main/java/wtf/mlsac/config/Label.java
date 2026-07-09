@@ -17,7 +17,7 @@
  *
  * This file is based on GPLv3 licensed work and includes modifications.
  * Derived from:
- *   - SlothAC (© 2025 KaelusMC, https://github.com/KaelusMC/SlothAC)
+ *   - Shard (© 2025 KaelusAI, https://github.com/KaelusAI/Shard)
  *   - Grim (© 2025 GrimAnticheat, https://github.com/GrimAnticheat/Grim)
  *   - Client-side project (GPLv3: https://github.com/MLSAC/client-side)
  *

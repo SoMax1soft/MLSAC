@@ -17,7 +17,7 @@
  *
  * This file is based on GPLv3 licensed work and includes modifications.
  * Derived from:
- *   - SlothAC (© 2025 KaelusMC, https://github.com/KaelusMC/SlothAC)
+ *   - Shard (© 2025 KaelusAI, https://github.com/KaelusAI/Shard)
  *   - Grim (© 2025 GrimAnticheat, https://github.com/GrimAnticheat/Grim)
  *   - Client-side project (GPLv3: https://github.com/MLSAC/client-side)
  *
@@ -29,8 +29,12 @@
 package wtf.mlsac.flatbuffers;
 import com.google.flatbuffers.FlatBufferBuilder;
 public final class FBTickData {
+    // Field slots must match the server-side decoder (decodeFlatBufferToFeatures):
+    // 0 deltaYaw, 1 deltaPitch, 2 accelYaw, 3 accelPitch, 4 jerkYaw, 5 jerkPitch.
+    // gcd-error is intentionally not serialized: the inference backend does not read it
+    // (it is still computed and written to the training CSV via TickData).
     public static void startFBTickData(FlatBufferBuilder builder) {
-        builder.startTable(8);
+        builder.startTable(6);
     }
     public static void addDeltaYaw(FlatBufferBuilder builder, float deltaYaw) {
         builder.addFloat(0, deltaYaw, 0.0f);
@@ -44,17 +48,11 @@ public final class FBTickData {
     public static void addAccelPitch(FlatBufferBuilder builder, float accelPitch) {
         builder.addFloat(3, accelPitch, 0.0f);
     }
-    public static void addJerkPitch(FlatBufferBuilder builder, float jerkPitch) {
-        builder.addFloat(4, jerkPitch, 0.0f);
-    }
     public static void addJerkYaw(FlatBufferBuilder builder, float jerkYaw) {
-        builder.addFloat(5, jerkYaw, 0.0f);
+        builder.addFloat(4, jerkYaw, 0.0f);
     }
-    public static void addGcdErrorYaw(FlatBufferBuilder builder, float gcdErrorYaw) {
-        builder.addFloat(6, gcdErrorYaw, 0.0f);
-    }
-    public static void addGcdErrorPitch(FlatBufferBuilder builder, float gcdErrorPitch) {
-        builder.addFloat(7, gcdErrorPitch, 0.0f);
+    public static void addJerkPitch(FlatBufferBuilder builder, float jerkPitch) {
+        builder.addFloat(5, jerkPitch, 0.0f);
     }
     public static int endFBTickData(FlatBufferBuilder builder) {
         return builder.endTable();

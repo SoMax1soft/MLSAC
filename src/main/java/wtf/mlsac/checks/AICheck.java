@@ -17,7 +17,7 @@
  *
  * This file is based on GPLv3 licensed work and includes modifications.
  * Derived from:
- *   - SlothAC (© 2025 KaelusMC, https://github.com/KaelusMC/SlothAC)
+ *   - Shard (© 2025 KaelusAI, https://github.com/KaelusAI/Shard)
  *   - Grim (© 2025 GrimAnticheat, https://github.com/GrimAnticheat/Grim)
  *   - Client-side project (GPLv3: https://github.com/MLSAC/client-side)
  *
@@ -153,7 +153,7 @@ public class AICheck {
         data.incrementTicksSinceAttack();
         if (data.getTicksSinceAttack() > sequence) {
             // Combat ended: drop the rolling window (the latest windows were already sent during
-            // combat). Mirrors SlothAC's non-continuous behaviour.
+            // combat). Mirrors Shard's non-continuous behaviour.
             if (data.getBufferSize() > 0) {
                 data.clearBuffer();
             }
@@ -189,13 +189,11 @@ public class AICheck {
             if (ticks.size() < sequence) {
                 plugin.debug("[AI] Not enough ticks for " + player.getName() +
                         ": " + ticks.size() + "/" + sequence);
-                data.setPendingRequest(false);
                 return;
             }
             IAIClient client = clientProvider.get();
             if (client == null) {
                 plugin.debug("[AI] Client unavailable (null) for " + player.getName());
-                data.setPendingRequest(false);
                 return;
             }
             plugin.debug("[AI] Sending " + ticks.size() + " ticks for " + player.getName() +
@@ -217,11 +215,10 @@ public class AICheck {
                     .subscribe(response -> {
                         processResponse(playerRef, playerUuid, playerName, data, response);
                     }, error -> {
-                        handleError(playerName, data, error);
+                        handleError(playerName, error);
                     });
         } catch (Exception e) {
             plugin.getLogger().warning("[AI] Unexpected error in sendDataToAI: " + e.getMessage());
-            data.setPendingRequest(false);
         }
     }
 
@@ -256,7 +253,6 @@ public class AICheck {
     private void processResponse(Player playerRef, UUID playerUuid, String playerName, AIPlayerData data, AIResponse response) {
         // Rolling window: do NOT clear the tick buffer here - it keeps sliding as packets arrive
         // (capped at `sequence` in processTick), so overlapping windows are sent during combat.
-        data.setPendingRequest(false);
         if (response.getError() != null && response.getError().contains("INVALID_SEQUENCE")) {
             handleInvalidSequence(response.getError());
             return;
@@ -375,10 +371,7 @@ public class AICheck {
         }
     }
 
-    private void handleError(String playerName, AIPlayerData data, Throwable error) {
-        if (data != null) {
-            data.setPendingRequest(false);
-        }
+    private void handleError(String playerName, Throwable error) {
         Throwable cause = error.getCause() != null ? error.getCause() : error;
         logger.warning("[AI] Error for " + playerName + ": " + cause.getMessage());
     }
