@@ -57,8 +57,6 @@ public class HttpAIClient implements IAIClient {
     private static final int SHUTDOWN_TIMEOUT_SECONDS = 5;
     private static final int MAX_RETRY_ATTEMPTS = 3;
     private static final long INITIAL_BACKOFF_MS = 1000;
-    // Circuit breaker: this many connection-level failures in a row (timeouts, refused
-    // connections) mark the backend unreachable and suspend all outgoing requests.
     private static final int NETWORK_FAILURE_THRESHOLD = 3;
     private static final long RECONNECT_INITIAL_DELAY_MS = 10_000;
     private static final long RECONNECT_MAX_DELAY_MS = 300_000;
@@ -66,8 +64,6 @@ public class HttpAIClient implements IAIClient {
     private static final long HEARTBEAT_INTERVAL_MS = 30000;
     private static final long REPORT_STATS_INTERVAL_MS = 30000;
     private static final long INTERSERVER_EVENT_POLL_INTERVAL_MS = 3000;
-    // Kept short: a healthy backend accepts a TCP connection near-instantly, and while the
-    // backend is down every queued request blocks a worker thread for this long.
     private static final int CONNECT_TIMEOUT_SECONDS = 4;
     private static final int READ_TIMEOUT_SECONDS = 30;
     private static final int WRITE_TIMEOUT_SECONDS = 30;
@@ -344,9 +340,6 @@ public class HttpAIClient implements IAIClient {
         }
         if (attempt >= MAX_RETRY_ATTEMPTS) {
             logger.severe("[HTTP] Max retry attempts reached - continuing to retry in the background");
-            // Without this the plugin would stay offline until a manual reload whenever the
-            // backend happened to be down during startup: the periodic check and reconnect chain
-            // were only ever started from a successful connect().
             startPeriodicCheck();
             scheduleReconnect();
             return CompletableFuture.completedFuture(false);
@@ -609,7 +602,6 @@ public class HttpAIClient implements IAIClient {
         }
         int attempt = reconnectAttempts.getAndIncrement();
         long delayMs = Math.min(RECONNECT_INITIAL_DELAY_MS << Math.min(attempt, 5), RECONNECT_MAX_DELAY_MS);
-        // Jitter so a fleet of servers does not reconnect in lockstep after a backend outage.
         delayMs += ThreadLocalRandom.current().nextLong(delayMs / 5 + 1);
         logger.info("[HTTP] Scheduling reconnect in " + (delayMs / 1000) + "s (attempt " + (attempt + 1) + ")");
         long delayTicks = Math.max(1, delayMs / 50);
@@ -647,9 +639,6 @@ public class HttpAIClient implements IAIClient {
         }
 
         return io.reactivex.rxjava3.core.Observable.create(emitter -> {
-            // Cap queued+running predicts. Windows overlap by 75%, so dropping one is harmless -
-            // unlike letting a slow or dead backend build an unbounded executor queue of stale
-            // requests that each block a worker thread for the full timeout.
             if (inFlightPredicts.incrementAndGet() > MAX_IN_FLIGHT_PREDICTS) {
                 inFlightPredicts.decrementAndGet();
                 if (debug) {
@@ -686,12 +675,6 @@ public class HttpAIClient implements IAIClient {
         });
     }
 
-    /**
-     * The only predict transport: NDJSON streaming from {@code /api/v1/predict-stream} (one line
-     * per model, terminated by a {@code done} line). The legacy single-shot {@code /api/v1/predict}
-     * fallback was removed on purpose - it doubled backend load whenever a stream completed without
-     * predictions, and every supported backend serves the stream endpoint.
-     */
     private void executeStreamingPredict(JsonObject json,
             io.reactivex.rxjava3.core.ObservableEmitter<AIResponse> emitter) throws IOException {
         String url = serverAddress + "/api/v1/predict-stream";
@@ -856,16 +839,10 @@ public class HttpAIClient implements IAIClient {
         scheduleReconnect();
     }
 
-    /** Any completed HTTP round-trip (regardless of status code) proves the network path works. */
     private void recordNetworkSuccess() {
         consecutiveNetworkFailures.set(0);
     }
 
-    /**
-     * Counts connection-level failures (timeouts, refused connections). HTTP error statuses do NOT
-     * go through here - they mean the backend is reachable and are handled per-endpoint. After
-     * {@link #NETWORK_FAILURE_THRESHOLD} failures in a row the backend is treated as unreachable.
-     */
     private void recordNetworkFailure(String context) {
         int failures = consecutiveNetworkFailures.incrementAndGet();
         if (debug) {
@@ -876,13 +853,6 @@ public class HttpAIClient implements IAIClient {
         }
     }
 
-    /**
-     * Circuit breaker for a dead/unreachable backend. Marks the client disconnected (which makes
-     * AICheck stop producing predicts instantly) and cancels the periodic senders, so an offline
-     * API is not hammered with requests that each burn a full connect timeout. Recovery runs
-     * through {@link #scheduleReconnect()} with exponential backoff; a successful connect restarts
-     * the periodic tasks.
-     */
     private void enterConnectionLostState(String context) {
         if (shuttingDown.get() || !connected.compareAndSet(true, false)) {
             return;

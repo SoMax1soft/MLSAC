@@ -167,6 +167,10 @@ public class PlayerListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerRespawn(PlayerRespawnEvent event) {
+        // Entity id changes on respawn - refresh the hit cache so attacks on this player resolve.
+        if (hitListener != null) {
+            hitListener.cacheEntity(event.getPlayer());
+        }
         if (hologramManager != null) {
             hologramManager.handleRespawn(event.getPlayer());
         }
@@ -174,6 +178,9 @@ public class PlayerListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerChangedWorld(PlayerChangedWorldEvent event) {
+        if (hitListener != null) {
+            hitListener.cacheEntity(event.getPlayer());
+        }
         if (hologramManager != null) {
             hologramManager.handleWorldChange(event.getPlayer());
         }

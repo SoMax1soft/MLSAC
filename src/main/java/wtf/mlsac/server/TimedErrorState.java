@@ -27,11 +27,6 @@
 
 package wtf.mlsac.server;
 
-/**
- * A latched boolean flag that auto-expires after a silence window. Used to mute requests for a
- * while after the inference backend returns server errors. The class only holds the state and the
- * expiry math; the owner decides what to do when it expires (e.g. logging, scheduling a reconnect).
- */
 final class TimedErrorState {
     private final long silenceMs;
     private volatile boolean active = false;
@@ -50,12 +45,10 @@ final class TimedErrorState {
         active = false;
     }
 
-    /** The raw latched flag, ignoring expiry. */
     boolean isActive() {
         return active;
     }
 
-    /** {@code true} when the flag is set and its silence window has elapsed. */
     boolean isExpired(long now) {
         return active && now - enteredAt > silenceMs;
     }

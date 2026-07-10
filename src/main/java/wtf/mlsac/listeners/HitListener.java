@@ -111,7 +111,15 @@ public class HitListener extends PacketListenerAbstract {
     private Player getPlayerById(int entityId) {
         UUID uuid = playerIdCache.get(entityId);
         if (uuid != null) {
-            return Bukkit.getPlayer(uuid);
+            Player cached = Bukkit.getPlayer(uuid);
+            // Entity IDs are reused and change on respawn/world change, so a cached mapping can go
+            // stale. If it no longer resolves to an online player with this exact entity id, drop
+            // it and re-resolve - otherwise attacks on this target return null and the attacker
+            // never enters combat, so their rotations are never collected.
+            if (cached != null && cached.getEntityId() == entityId) {
+                return cached;
+            }
+            playerIdCache.remove(entityId);
         }
         for (Player player : Bukkit.getOnlinePlayers()) {
             if (player.getEntityId() == entityId) {

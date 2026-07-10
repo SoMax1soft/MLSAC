@@ -64,26 +64,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-/**
- * Network-behaviour tests for {@link HttpAIClient} against a real local HTTP backend, covering the
- * three failure profiles the circuit breaker was built for:
- *
- * <ol>
- *   <li>backend dies completely - the breaker must open after
- *       {@code NETWORK_FAILURE_THRESHOLD} consecutive connection failures and stop all traffic;</li>
- *   <li>intermittent connection failures - occasional drops must NOT open the breaker because any
- *       completed round-trip resets the failure counter;</li>
- *   <li>healthy backend under a predict burst - the in-flight cap must drop the excess instead of
- *       queueing stale requests, without a single error and without opening the breaker.</li>
- * </ol>
- *
- * Connection failures are simulated by closing the connection before writing a response, which
- * surfaces in OkHttp as an {@link IOException} - the same code path as a connect/read timeout,
- * just without burning wall-clock time in the test.
- */
 class HttpAIClientNetworkTest {
-    private static final int MAX_IN_FLIGHT_PREDICTS = 8; // mirrors HttpAIClient.MAX_IN_FLIGHT_PREDICTS
-    private static final int FAILURE_THRESHOLD = 3;      // mirrors HttpAIClient.NETWORK_FAILURE_THRESHOLD
+    private static final int MAX_IN_FLIGHT_PREDICTS = 8;
+    private static final int FAILURE_THRESHOLD = 3;
 
     private enum BackendMode { NORMAL, DROP_CONNECTION }
 
@@ -115,7 +98,6 @@ class HttpAIClientNetworkTest {
         backend.createContext("/api/v1/online", ex -> respondJson(ex, "{\"success\":true}"));
         backend.createContext("/api/v1/events", ex -> respondJson(ex, "{\"success\":true}"));
         backend.createContext("/api/v1/predict-stream", this::handlePredict);
-        // The client is stream-only; the legacy endpoint must never be called.
         backend.createContext("/api/v1/predict", ex -> {
             legacyEndpointHits.incrementAndGet();
             respondJson(ex, "{\"probability\":0.0,\"model\":\"legacy\",\"error\":\"\",\"success\":true}");
@@ -154,7 +136,6 @@ class HttpAIClientNetworkTest {
                 + FAILURE_THRESHOLD + " consecutive network failures");
 
         int servedBeforeBreaker = predictRequestsServed.get();
-        // Requests past the breaker must fail instantly without touching the network.
         for (int i = 0; i < 5; i++) {
             assertEquals(Outcome.ERROR, callPredict(), "predict after breaker opened must fail fast");
         }
@@ -168,7 +149,6 @@ class HttpAIClientNetworkTest {
     void intermittentFailuresDoNotOpenBreaker() throws Exception {
         for (int cycle = 0; cycle < 4; cycle++) {
             predictMode.set(BackendMode.DROP_CONNECTION);
-            // One less than the threshold, then a success: the counter must reset every time.
             for (int i = 0; i < FAILURE_THRESHOLD - 1; i++) {
                 assertEquals(Outcome.ERROR, callPredict());
             }
@@ -218,7 +198,6 @@ class HttpAIClientNetworkTest {
                 "dropped predicts must never reach the network");
         assertTrue(client.isConnected(), "load alone must never open the breaker");
 
-        // The in-flight counter must fully drain: a follow-up predict has to go through.
         predictDelayMs.set(0);
         assertEquals(Outcome.SUCCESS, callPredict(), "client must recover to normal operation after the burst");
     }
@@ -235,13 +214,10 @@ class HttpAIClientNetworkTest {
             }
         }
         if (predictMode.get() == BackendMode.DROP_CONNECTION) {
-            // Kill the connection without a response: OkHttp surfaces this as an IOException,
-            // the same failure class as a timeout, minus the wall-clock cost.
             exchange.close();
             return;
         }
         predictRequestsServed.incrementAndGet();
-        // NDJSON stream shaped like the real /api/v1/predict-stream backend response.
         respondJson(exchange,
                 "{\"type\":\"prediction\",\"probability\":0.42,\"model\":\"fast\",\"error\":\"\",\"success\":true}\n"
                         + "{\"type\":\"done\",\"success\":true,\"models\":1}\n");
@@ -303,11 +279,6 @@ class HttpAIClientNetworkTest {
         field.set(null, value);
     }
 
-    /**
-     * Delayed async tasks run on a real executor (the reconnect chain relies on them); repeating
-     * tasks (heartbeat, report-stats, interserver poll) are deliberately inert so background
-     * traffic cannot race the failure counter and make these tests flaky.
-     */
     private final class TestSchedulerAdapter implements SchedulerAdapter {
         @Override
         public ScheduledTask runSync(Runnable task) {

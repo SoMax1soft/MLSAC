@@ -89,13 +89,29 @@ public enum ServerVersion {
             int major = Integer.parseInt(parts[0]);
             int minor = Integer.parseInt(parts[1]);
             int patch = parts.length > 2 ? Integer.parseInt(parts[2]) : 0;
-            if (major != 1) {
+            if (major > 1) {
+                // Post-"1.x" versioning (e.g. "26.1.2"). Anything past the 1.x scheme is newer than
+                // every version we enumerate, so treat it as the latest known instead of UNKNOWN -
+                // otherwise the plugin falls back to 1.16.5 legacy mode on modern servers.
+                return latestKnown();
+            }
+            if (major < 1) {
                 return UNKNOWN;
             }
             return findBestMatch(minor, patch);
         } catch (NumberFormatException e) {
             return UNKNOWN;
         }
+    }
+    private static ServerVersion latestKnown() {
+        ServerVersion latest = UNKNOWN;
+        for (ServerVersion v : values()) {
+            if (v == UNKNOWN) continue;
+            if (latest == UNKNOWN || v.isAtLeast(latest)) {
+                latest = v;
+            }
+        }
+        return latest;
     }
     private static ServerVersion findBestMatch(int minor, int patch) {
         ServerVersion bestMatch = UNKNOWN;

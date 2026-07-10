@@ -52,8 +52,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 
 public class AICheck {
-    // Bounds for server-driven INVALID_SEQUENCE updates; values outside this window would let a
-    // hostile/broken backend destabilize the whole detection pipeline.
     private static final int MIN_SEQUENCE = 5;
     private static final int MAX_SEQUENCE = 200;
     private final Main plugin;
@@ -152,8 +150,6 @@ public class AICheck {
 
         data.incrementTicksSinceAttack();
         if (data.getTicksSinceAttack() > sequence) {
-            // Combat ended: drop the rolling window (the latest windows were already sent during
-            // combat). Mirrors Shard's non-continuous behaviour.
             if (data.getBufferSize() > 0) {
                 data.clearBuffer();
             }
@@ -251,8 +247,6 @@ public class AICheck {
     }
 
     private void processResponse(Player playerRef, UUID playerUuid, String playerName, AIPlayerData data, AIResponse response) {
-        // Rolling window: do NOT clear the tick buffer here - it keeps sliding as packets arrive
-        // (capped at `sequence` in processTick), so overlapping windows are sent during combat.
         if (response.getError() != null && response.getError().contains("INVALID_SEQUENCE")) {
             handleInvalidSequence(response.getError());
             return;

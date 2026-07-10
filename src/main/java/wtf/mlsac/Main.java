@@ -92,9 +92,7 @@ public final class Main extends JavaPlugin {
         try {
             SchedulerManager.reset();
             SchedulerManager.initialize(this);
-            getLogger().info("SchedulerManager initialized for " + SchedulerManager.getServerType());
         } catch (Throwable e) {
-            getLogger().severe("Failed to initialize SchedulerManager: " + e.getMessage());
             e.printStackTrace();
             getServer().getPluginManager().disablePlugin(this);
             return;
@@ -115,7 +113,6 @@ public final class Main extends JavaPlugin {
                 PacketEvents.getAPI().init();
             }
         } catch (Exception e) {
-            getLogger().severe("Failed to initialize PacketEvents: " + e.getMessage());
             e.printStackTrace();
         }
         VersionAdapter.get().logCompatibilityInfo();
@@ -186,12 +183,11 @@ public final class Main extends JavaPlugin {
             command.setExecutor(commandHandler);
             command.setTabCompleter(commandHandler);
         }
-        getLogger().info("MLS enabled successfully!");
         getLogger().info("Data collector: ENABLED (output: " + config.getOutputDirectory() + ")");
         if (config.isAiEnabled()) {
             getLogger().info("AI detection: ENABLED (threshold: " + config.getAiAlertThreshold() + ")");
         } else {
-            getLogger().info("AI detection: DISABLED");
+            getLogger().info("AI detection: DISABLED (TURN IT ON IN CONFIG.YML)");
         }
 
         this.updateChecker = new UpdateChecker(this, config);
@@ -225,14 +221,14 @@ public final class Main extends JavaPlugin {
             updateChecker.stop();
         }
         if (aiClientProvider != null) {
-            getLogger().info("Shutting down HTTP client...");
+            getLogger().info("Shutting down network client...");
             try {
                 aiClientProvider.shutdown().get(5, java.util.concurrent.TimeUnit.SECONDS);
             } catch (Exception e) {
                 if (e.getMessage() != null) {
-                    getLogger().warning("Error shutting down HTTP client: " + e.getMessage());
+                    getLogger().warning("Error shutting down network client: " + e.getMessage());
                 } else {
-                    getLogger().warning("Error shutting down HTTP client during disable:");
+                    getLogger().warning("Error shutting down network client during disable:");
                     e.printStackTrace();
                 }
             }

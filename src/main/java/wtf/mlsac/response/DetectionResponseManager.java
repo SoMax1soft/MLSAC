@@ -23,8 +23,6 @@ public class DetectionResponseManager {
     private final Main plugin;
     private final Map<UUID, ActiveDamageReduction> damageReductions = new ConcurrentHashMap<>();
     private final Map<UUID, Map<String, Long>> trollCooldowns = new ConcurrentHashMap<>();
-    // Registry of troll behaviours keyed by config "type". Adding a new troll action means
-    // registering a handler here instead of extending a switch (OCP).
     private final Map<String, TrollAction> trollActionHandlers = new HashMap<>();
     private Config config;
 

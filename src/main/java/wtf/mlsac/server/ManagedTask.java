@@ -32,21 +32,14 @@ import wtf.mlsac.scheduler.ScheduledTask;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
-/**
- * Holds a single optional {@link ScheduledTask} and centralises the "cancel the old one before
- * scheduling a new one" dance that the HTTP client repeated for every periodic task. Keeping it in
- * one place removes ~40 lines of duplicated {@code AtomicReference} juggling.
- */
 final class ManagedTask {
     private final AtomicReference<ScheduledTask> ref = new AtomicReference<>();
 
-    /** Cancels any currently scheduled task, then schedules and stores a new one. */
     void reschedule(Supplier<ScheduledTask> scheduler) {
         cancel();
         ref.set(scheduler.get());
     }
 
-    /** Cancels the scheduled task (if any) and forgets it. */
     void cancel() {
         ScheduledTask previous = ref.getAndSet(null);
         if (previous != null) {
@@ -54,7 +47,6 @@ final class ManagedTask {
         }
     }
 
-    /** Drops the reference without cancelling — for a one-shot task that has already run. */
     void clearReference() {
         ref.set(null);
     }

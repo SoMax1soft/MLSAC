@@ -29,10 +29,6 @@
 package wtf.mlsac.flatbuffers;
 import com.google.flatbuffers.FlatBufferBuilder;
 public final class FBTickData {
-    // Field slots must match the server-side decoder (decodeFlatBufferToFeatures):
-    // 0 deltaYaw, 1 deltaPitch, 2 accelYaw, 3 accelPitch, 4 jerkYaw, 5 jerkPitch.
-    // gcd-error is intentionally not serialized: the inference backend does not read it
-    // (it is still computed and written to the training CSV via TickData).
     public static void startFBTickData(FlatBufferBuilder builder) {
         builder.startTable(6);
     }

@@ -30,10 +30,6 @@ package wtf.mlsac.server;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
-/**
- * Small JSON helpers shared by the HTTP client. {@link #getString} and {@link #getDouble} are
- * lenient accessors that fall back instead of throwing on missing/malformed fields.
- */
 final class JsonSupport {
     private JsonSupport() {
     }
@@ -58,11 +54,6 @@ final class JsonSupport {
         return fallback;
     }
 
-    /**
-     * Strict prediction parser: a non-empty {@code error} field, malformed JSON, or a malformed
-     * {@code probability} all surface as a {@link RuntimeException} so the caller fails the request
-     * rather than acting on a bogus probability.
-     */
     static AIResponse parsePredictResponse(String responseBody) {
         try {
             JsonObject json = new JsonParser().parse(responseBody).getAsJsonObject();
