@@ -79,6 +79,8 @@ public class HttpAIClient implements IAIClient {
     private final Logger logger;
     private final boolean debug;
     private final PayloadFactory payloads;
+    private final boolean interServerEnabled;
+    private final boolean serverNameIsDefault;
     private final boolean eventReportingEnabled;
     private final double apiAlertEventThreshold;
     private final ExecutorService httpExecutor;
@@ -127,6 +129,9 @@ public class HttpAIClient implements IAIClient {
         }
         this.payloads = new PayloadFactory(plugin, serverName, serverFamily,
                 interServerEnabled, onlinePlayersSupplier);
+        this.interServerEnabled = interServerEnabled;
+        this.serverNameIsDefault = serverName == null || serverName.trim().isEmpty()
+                || serverName.trim().equalsIgnoreCase("default");
         this.eventReportingEnabled = eventReportingEnabled;
         this.apiAlertEventThreshold = apiAlertEventThreshold;
         int workers = Math.max(2, Math.min(4, Runtime.getRuntime().availableProcessors()));
@@ -166,6 +171,13 @@ public class HttpAIClient implements IAIClient {
             }
             JsonObject duplicate = warnings.getAsJsonObject("duplicateServerName");
             if (!duplicate.has("active") || !duplicate.get("active").getAsBoolean()) {
+                duplicateNameWarning.reset();
+                return;
+            }
+            // Only nag about a duplicate/default server name when it actually matters: inter-server
+            // messaging is on AND the name is still the default. Otherwise the name is unused, so the
+            // warning is just noise.
+            if (!interServerEnabled || !serverNameIsDefault) {
                 duplicateNameWarning.reset();
                 return;
             }

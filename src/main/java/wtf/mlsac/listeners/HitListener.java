@@ -31,6 +31,7 @@ import com.github.retrooper.packetevents.event.PacketListenerAbstract;
 import com.github.retrooper.packetevents.event.PacketListenerPriority;
 import com.github.retrooper.packetevents.event.PacketReceiveEvent;
 import com.github.retrooper.packetevents.protocol.packettype.PacketType;
+import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientAttack;
 import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientInteractEntity;
 import wtf.mlsac.checks.AICheck;
 import wtf.mlsac.session.ISessionManager;
@@ -84,18 +85,25 @@ public class HitListener extends PacketListenerAbstract {
     @Override
     public void onPacketReceive(PacketReceiveEvent event) {
         try {
-            if (event.getPacketType() != PacketType.Play.Client.INTERACT_ENTITY) {
+            int targetId;
+            if (event.getPacketType() == PacketType.Play.Client.ATTACK) {
+                // 1.21.6+/26.x send attacks as a dedicated ATTACK packet (no action field).
+                targetId = new WrapperPlayClientAttack(event).getEntityId();
+            } else if (event.getPacketType() == PacketType.Play.Client.INTERACT_ENTITY) {
+                // Older clients (and via ViaVersion) still use INTERACT_ENTITY with an action.
+                WrapperPlayClientInteractEntity packet = new WrapperPlayClientInteractEntity(event);
+                if (packet.getAction() != WrapperPlayClientInteractEntity.InteractAction.ATTACK) {
+                    return;
+                }
+                targetId = packet.getEntityId();
+            } else {
                 return;
             }
-            WrapperPlayClientInteractEntity packet = new WrapperPlayClientInteractEntity(event);
-            if (packet.getAction() != WrapperPlayClientInteractEntity.InteractAction.ATTACK) {
-                return;
-            }
+
             Player attacker = (Player) event.getPlayer();
             if (attacker == null) {
                 return;
             }
-            int targetId = packet.getEntityId();
             Player target = getPlayerById(targetId);
             if (target == null) {
                 return;

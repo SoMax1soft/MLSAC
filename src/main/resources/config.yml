@@ -12,7 +12,7 @@
 
 # Schema marker — when a user's config has a different value the plugin runs a one-time wipe
 # migration (preserving detection.api-key, detection.enabled, penalties.actions). Do not edit.
-_schema-version: 'b44'
+_schema-version: 'b48'
 
 # ┌───────────────────────────────────────────────────────────────────────────────┐
 # │                            GENERAL SETTINGS                                   │
