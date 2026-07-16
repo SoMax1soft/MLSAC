@@ -1,4 +1,5 @@
 /*
+ * Copyright (C) 2026 MLSAC Team
  * MLSAC is a GPLv3 licensed fork of a Minecraft anti-cheat system.
  * This project is community-maintained and not affiliated with any single upstream repository.
  *
