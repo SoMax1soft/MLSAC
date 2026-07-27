@@ -107,6 +107,7 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
         register("alerts", alertsOrAdmin, true, (sender, args) -> handleAlerts(sender));
         register("monitor", alertsOrAdmin, true, (sender, args) -> handleMonitor(sender));
         register("suspects", alertsOrAdmin, true, (sender, args) -> handleSuspects(sender));
+        register("vision", alertsOrAdmin, true, (sender, args) -> handleVision(sender));
         register("prob", probOrAdmin, true, this::handleProb);
         register("reload", reloadOrAdmin, false, (sender, args) -> handleReload(sender));
 
@@ -118,6 +119,20 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
         register("falsepositive", admin, false, this::handleFalsePositive);
         register("status", admin, false, (sender, args) -> handleStatus(sender));
         register("animation", admin, false, this::handleAnimation);
+    }
+
+    /**
+     * Opens the MLS VISION watch list. The list itself is kept fresh by
+     * {@link wtf.mlsac.vision.VisionWatchList}, so opening the menu never waits on the network.
+     */
+    private void handleVision(CommandSender sender) {
+        Player player = (Player) sender;
+        if (plugin.getVisionWatchList() == null) {
+            player.sendMessage(ColorUtil.colorize(plugin.getMessagesConfig().getReportPrefix()
+                    + plugin.getMessagesConfig().getMessage("vision-disabled")));
+            return;
+        }
+        new wtf.mlsac.menu.VisionMenu(plugin, player).open();
     }
 
     private void register(String name, Set<String> anyPermission, boolean playersOnly,
@@ -704,6 +719,20 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
             sender.sendMessage(ColorUtil.colorize("&7API: " + status));
             sender.sendMessage(ColorUtil.colorize(
                     "&7Backend: &f" + (client.getServerAddress() != null ? client.getServerAddress() : "N/A")));
+        }
+
+        // Remote config preset — the usual reason a change made on the site is not live yet.
+        wtf.mlsac.config.Config pluginConfig = plugin.getPluginConfig();
+        if (pluginConfig != null) {
+            if (!pluginConfig.isRemoteConfigEnabled()) {
+                sender.sendMessage(ColorUtil.colorize("&7Config preset: &8none (local config.yml)"));
+            } else if (pluginConfig.isRemotePresetApplied()) {
+                sender.sendMessage(ColorUtil.colorize(
+                        "&7Config preset: &a" + pluginConfig.getRemotePresetName() + " &7(applied)"));
+            } else {
+                sender.sendMessage(ColorUtil.colorize("&7Config preset: &e" + pluginConfig.getRemotePresetName()
+                        + " &7(not loaded - check test mode on the site)"));
+            }
         }
 
         // Daily Statistics

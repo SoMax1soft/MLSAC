@@ -4,6 +4,9 @@ main: wtf.mlsac.Main
 api-version: '1.16'
 description: "MLSAC.NET - AI Anticheat"
 folia-supported: true
+# Optional MLS VISION economy sources. Purely presence-detected (Class.forName + getPlugin), see
+# wtf.mlsac.compat.*Compat — none of these are required for the plugin to run.
+softdepend: [Vault, PlayerPoints, Essentials, CMI, WorldGuard, LiteBans, LuckPerms]
 
 commands:
   mlsac:
@@ -23,6 +26,9 @@ commands:
       /mlsac punish <player> - Execute max punishment
     permission: mlsac.admin
     aliases: [ml, mls]
+  report:
+    description: Report a player to the staff (/report <nick> <reason>)
+    usage: /report <nick> <reason>
 
 permissions:
   mlsac.admin:

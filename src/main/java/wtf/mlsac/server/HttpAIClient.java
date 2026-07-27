@@ -38,7 +38,12 @@ import wtf.mlsac.alert.AlertManager;
 import wtf.mlsac.scheduler.SchedulerManager;
 import wtf.mlsac.util.ColorUtil;
 import wtf.mlsac.util.SecurityUtil;
+import wtf.mlsac.report.Report;
+import wtf.mlsac.report.ReportStatus;
 import java.io.BufferedReader;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Locale;
 import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
@@ -68,6 +73,8 @@ public class HttpAIClient implements IAIClient {
     private static final int CONNECT_TIMEOUT_SECONDS = 4;
     private static final int READ_TIMEOUT_SECONDS = 30;
     private static final int WRITE_TIMEOUT_SECONDS = 30;
+    // Reports are interactive (a GUI waits on them): fail fast instead of holding a thread for 30s.
+    private static final int REPORT_CALL_TIMEOUT_SECONDS = 8;
     private static final long PERIODIC_CHECK_INTERVAL_MS = 60000;
     private static final long STASIS_CHECK_INTERVAL_MS = 300000; // 5 minutes
     private static final int DUPLICATE_NAME_WARNING_LIMIT = 3;
@@ -86,6 +93,10 @@ public class HttpAIClient implements IAIClient {
     private final double apiAlertEventThreshold;
     private final ExecutorService httpExecutor;
     private final OkHttpClient httpClient;
+    // Reports run on their own small pool + client so a slow/queued report call never competes with
+    // (or is starved by) the high-throughput inference pool, and can't freeze the GUI for 30s.
+    private final ExecutorService reportExecutor;
+    private final OkHttpClient reportHttpClient;
     private final ManagedTask heartbeat = new ManagedTask();
     private final ManagedTask reportStats = new ManagedTask();
     private final ManagedTask interserverEvent = new ManagedTask();
@@ -146,6 +157,18 @@ public class HttpAIClient implements IAIClient {
                 .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                 .writeTimeout(WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                 .retryOnConnectionFailure(false)
+                .build();
+
+        this.reportExecutor = Executors.newFixedThreadPool(2, r -> {
+            Thread thread = new Thread(r, "mlsac-report-worker");
+            thread.setDaemon(true);
+            return thread;
+        });
+        // Shares the base client's connection pool/dispatcher but with a hard call timeout so the
+        // GUI never hangs on a stalled report request.
+        this.reportHttpClient = httpClient.newBuilder()
+                .callTimeout(REPORT_CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                .readTimeout(REPORT_CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                 .build();
     }
 
@@ -225,18 +248,38 @@ public class HttpAIClient implements IAIClient {
             return;
         }
 
+        String type = SecurityUtil.sanitizeChatText(JsonSupport.getString(event, "type", "alert"), 24);
+        String model = SecurityUtil.sanitizeChatText(JsonSupport.getString(event, "model", "unknown"), 32);
+        String action = SecurityUtil.sanitizeChatText(JsonSupport.getString(event, "action", type), 48);
+
+        boolean isReportEvent = type.toLowerCase(Locale.ROOT).contains("report")
+                || model.toLowerCase(Locale.ROOT).contains("report")
+                || action.toLowerCase(Locale.ROOT).contains("report")
+                || event.has("reporterName")
+                || event.has("reporter")
+                || event.has("reason");
+
+        String sourceServerName = SecurityUtil.sanitizeChatText(JsonSupport.getString(event, "serverName", "unknown"), 32);
+        String playerName = SecurityUtil.sanitizeChatText(JsonSupport.getString(event, "playerName", "Unknown"), 32);
+
+        if (isReportEvent) {
+            wtf.mlsac.report.ReportManager reportManager = plugin.getReportManager();
+            if (reportManager != null) {
+                String reporterName = SecurityUtil.sanitizeChatText(
+                        JsonSupport.getString(event, "reporterName", JsonSupport.getString(event, "reporter", "Unknown")), 32);
+                String reason = SecurityUtil.sanitizeChatText(
+                        JsonSupport.getString(event, "reason", ""), 128);
+                reportManager.invalidateReportsCache();
+                reportManager.notifyStaffCrossServer(sourceServerName, reporterName, playerName, reason);
+            }
+            return;
+        }
+
         AlertManager alertManager = plugin.getAlertManager();
         if (alertManager == null) {
             return;
         }
 
-        // Inter-server payloads come from outside this server; strip control characters and cap
-        // lengths before they reach admin chat/console.
-        String type = SecurityUtil.sanitizeChatText(JsonSupport.getString(event, "type", "alert"), 24);
-        String sourceServerName = SecurityUtil.sanitizeChatText(JsonSupport.getString(event, "serverName", "unknown"), 32);
-        String playerName = SecurityUtil.sanitizeChatText(JsonSupport.getString(event, "playerName", "Unknown"), 32);
-        String model = SecurityUtil.sanitizeChatText(JsonSupport.getString(event, "model", "unknown"), 32);
-        String action = SecurityUtil.sanitizeChatText(JsonSupport.getString(event, "action", type), 48);
         double probability = JsonSupport.getDouble(event, "probability", 0.0);
         double buffer = JsonSupport.getDouble(event, "buffer", 0.0);
         int violationLevel = (int) Math.round(JsonSupport.getDouble(event, "violationLevel", JsonSupport.getDouble(event, "vl", 0.0)));
@@ -394,12 +437,17 @@ public class HttpAIClient implements IAIClient {
             httpClient.dispatcher().cancelAll();
             httpClient.connectionPool().evictAll();
             httpExecutor.shutdown();
+            reportExecutor.shutdown();
             try {
                 if (!httpExecutor.awaitTermination(3, TimeUnit.SECONDS)) {
                     httpExecutor.shutdownNow();
                 }
+                if (!reportExecutor.awaitTermination(2, TimeUnit.SECONDS)) {
+                    reportExecutor.shutdownNow();
+                }
             } catch (InterruptedException e) {
                 httpExecutor.shutdownNow();
+                reportExecutor.shutdownNow();
                 Thread.currentThread().interrupt();
             }
         }).thenApply(v -> null);
@@ -819,6 +867,180 @@ public class HttpAIClient implements IAIClient {
                 return false;
             }
         }, httpExecutor);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> submitReport(String reporterUuid, String reporterName,
+            String targetUuid, String targetName, String reason, List<Double> checks, boolean crossServer) {
+        JsonObject json = payloads.reportSubmission(reporterUuid, reporterName, targetUuid, targetName,
+                reason, checks, crossServer, sessionId);
+        CompletableFuture<Boolean> future = postReportRequest(serverAddress + "/api/v1/reports", json);
+        if (crossServer && interServerEnabled) {
+            JsonObject eventJson = payloads.event("report", targetUuid, targetName, "report",
+                    1.0, 0.0, 0, "report", "", sessionId);
+            eventJson.addProperty("reporterName", reporterName);
+            eventJson.addProperty("reason", reason);
+            sendEvent(eventJson);
+        }
+        return future;
+    }
+
+    @Override
+    public CompletableFuture<List<Report>> fetchReports(boolean crossReports) {
+        if (!isConnected() || isServerInErrorState()) {
+            return CompletableFuture.completedFuture(Collections.emptyList());
+        }
+        JsonObject json = payloads.reportsList(crossReports, sessionId);
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                Request request = new Request.Builder()
+                        .url(serverAddress + "/api/v1/reports/list")
+                        .post(jsonBody(json))
+                        .header("X-API-Key", apiKey)
+                        .build();
+                try (Response response = reportHttpClient.newCall(request).execute()) {
+                    ResponseBody respBody = response.body();
+                    String responseBody = respBody != null ? respBody.string() : "";
+                    if (!response.isSuccessful()) {
+                        if (debug) {
+                            logger.warning("[HTTP] Report list failed: HTTP " + response.code());
+                        }
+                        return Collections.<Report>emptyList();
+                    }
+                    return parseReports(responseBody);
+                }
+            } catch (Exception e) {
+                if (debug) {
+                    logger.warning("[HTTP] Report list request failed: " + e.getMessage());
+                }
+                return Collections.<Report>emptyList();
+            }
+        }, reportExecutor);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> updateReport(int reportId, ReportStatus status,
+            String handlerName, String cancelReason) {
+        String action;
+        switch (status) {
+            case CLAIMED:
+                action = "claim";
+                break;
+            case CLOSED:
+                action = "close";
+                break;
+            case CANCELLED:
+                action = "cancel";
+                break;
+            default:
+                return CompletableFuture.completedFuture(false);
+        }
+        JsonObject json = payloads.reportTransition(handlerName, cancelReason, sessionId);
+        return postReportRequest(serverAddress + "/api/v1/reports/" + reportId + "/" + action, json);
+    }
+
+    @Override
+    public CompletableFuture<List<wtf.mlsac.vision.FlaggedPlayer>> fetchFlaggedPlayers() {
+        if (!isConnected() || isServerInErrorState()) {
+            return CompletableFuture.completedFuture(Collections.emptyList());
+        }
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                Request request = new Request.Builder()
+                        .url(serverAddress + "/api/v1/vision/flagged")
+                        .get()
+                        .header("X-API-Key", apiKey)
+                        .build();
+                try (Response response = reportHttpClient.newCall(request).execute()) {
+                    ResponseBody respBody = response.body();
+                    String responseBody = respBody != null ? respBody.string() : "";
+                    if (!response.isSuccessful()) {
+                        if (debug) {
+                            logger.warning("[HTTP] VISION flagged list failed: HTTP " + response.code());
+                        }
+                        return Collections.<wtf.mlsac.vision.FlaggedPlayer>emptyList();
+                    }
+                    return wtf.mlsac.vision.FlaggedPlayer.parseList(responseBody);
+                }
+            } catch (Exception e) {
+                if (debug) {
+                    logger.warning("[HTTP] VISION flagged list request failed: " + e.getMessage());
+                }
+                return Collections.<wtf.mlsac.vision.FlaggedPlayer>emptyList();
+            }
+        }, reportExecutor);
+    }
+
+    private CompletableFuture<Boolean> postReportRequest(String url, JsonObject json) {
+        if (!isConnected() || isServerInErrorState()) {
+            logger.warning("[HTTP] Report request skipped: not connected to backend (" + serverAddress
+                    + "). Check detection.enabled and the API key in config.yml.");
+            return CompletableFuture.completedFuture(false);
+        }
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                Request request = new Request.Builder()
+                        .url(url)
+                        .post(jsonBody(json))
+                        .header("X-API-Key", apiKey)
+                        .build();
+                try (Response response = reportHttpClient.newCall(request).execute()) {
+                    ResponseBody respBody = response.body();
+                    String responseBody = respBody != null ? respBody.string() : "";
+                    int code = response.code();
+                    if (code == 401 || code == 403) {
+                        connected.set(false);
+                        return false;
+                    }
+                    if (code >= 500) {
+                        enterServerErrorState("Report request received HTTP " + code);
+                        return false;
+                    }
+                    if (!response.isSuccessful()) {
+                        logger.warning("[HTTP] Report request failed: HTTP " + code + " " + url
+                                + (code == 404 || code == 405
+                                        ? " — the backend does not expose the reports API yet (deploy the updated backend)."
+                                        : " " + responseBody));
+                        return false;
+                    }
+                    return true;
+                }
+            } catch (Exception e) {
+                logger.warning("[HTTP] Report request failed: " + e.getMessage());
+                return false;
+            }
+        }, reportExecutor);
+    }
+
+    private List<Report> parseReports(String responseBody) {
+        List<Report> reports = new ArrayList<>();
+        if (responseBody == null || responseBody.isEmpty()) {
+            return reports;
+        }
+        try {
+            JsonObject root = new JsonParser().parse(responseBody).getAsJsonObject();
+            if (!root.has("data") || !root.get("data").isJsonObject()) {
+                return reports;
+            }
+            JsonObject data = root.getAsJsonObject("data");
+            if (!data.has("reports") || !data.get("reports").isJsonArray()) {
+                return reports;
+            }
+            JsonArray array = data.getAsJsonArray("reports");
+            for (JsonElement element : array) {
+                if (element != null && element.isJsonObject()) {
+                    Report report = Report.fromJson(element.getAsJsonObject());
+                    if (report != null) {
+                        reports.add(report);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            if (debug) {
+                logger.warning("[HTTP] Failed to parse reports: " + e.getMessage());
+            }
+        }
+        return reports;
     }
 
     @Override

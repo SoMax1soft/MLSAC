@@ -228,6 +228,17 @@ public class ViolationManager {
         if (actionType != ActionType.RAW || command == null) {
             return false;
         }
+        return DESTRUCTIVE_COMMAND_TOKENS.contains(firstCommandToken(command));
+    }
+
+    /**
+     * The bare command name: no leading slash, no {@code plugin:} namespace, lower case.
+     * Empty string when there is nothing to read.
+     */
+    private static String firstCommandToken(String command) {
+        if (command == null) {
+            return "";
+        }
         String stripped = command.trim().toLowerCase(Locale.ROOT);
         int space = stripped.indexOf(' ');
         String first = space == -1 ? stripped : stripped.substring(0, space);
@@ -238,7 +249,37 @@ public class ViolationManager {
         if (colon != -1) {
             first = first.substring(colon + 1);
         }
-        return DESTRUCTIVE_COMMAND_TOKENS.contains(first);
+        return first;
+    }
+
+    /**
+     * What the punishment actually was, for the API's {@code action} field.
+     *
+     * <p>Reads the command rather than the {@link ActionType}, because the action type only records
+     * how the punishment was presented. A ban delivered through the ban animation used to report as
+     * {@code animation} and an unprefixed one as {@code raw}, so bans were scattered across three
+     * labels and none of them said "ban". Everything that later asks "was this player banned" —
+     * the MLS VISION trust score most of all — needs the same answer either way.
+     */
+    private static String resolveReportedAction(String command, ActionType actionType) {
+        String token = firstCommandToken(actionType != null ? actionType.stripPrefix(command) : command);
+        switch (token) {
+            case "ban":
+            case "tempban":
+            case "banip":
+            case "ban-ip":
+            case "ipban":
+                return "ban";
+            case "kick":
+                return "kick";
+            case "mute":
+            case "tempmute":
+                return "mute";
+            case "jail":
+                return "jail";
+            default:
+                return actionType != null ? actionType.name().toLowerCase(Locale.ROOT) : "raw";
+        }
     }
 
     public int incrementViolationLevel(UUID playerId) {
@@ -305,7 +346,7 @@ public class ViolationManager {
         addKickRecord(new KickRecord(player.getName(), probability, buffer, vl, command));
         penaltyExecutor.execute(command, context);
         if (isPunishingAction(command, actionType)) {
-            reportPunish(player, probability, buffer, vl, actionType.name().toLowerCase(Locale.ROOT), command);
+            reportPunish(player, probability, buffer, vl, resolveReportedAction(command, actionType), command);
         }
     }
 

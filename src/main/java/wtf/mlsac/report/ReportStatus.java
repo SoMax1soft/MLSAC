@@ -26,31 +26,39 @@
  *   - Modified by SoMax1soft for the MLSAC.NET project in 2026.
  */
 
-package wtf.mlsac.menu;
+package wtf.mlsac.report;
 
-import org.bukkit.entity.Player;
+import java.util.Locale;
 
-/** Immutable data a {@link MenuActionDispatcher} needs to run an action against a suspect. */
-final class MenuActionContext {
-    private final Player target;
-    private final double avgProbability;
-    private final String detections;
+/** Lifecycle of a player report. Mirrors the {@code status} column stored by the backend. */
+public enum ReportStatus {
+    /** Freshly created, waiting in the queue. */
+    OPEN,
+    /** A moderator took the report (started watching the suspect). */
+    CLAIMED,
+    /** Resolved and removed from the active queue. */
+    CLOSED,
+    /** Dismissed with a cancellation reason. */
+    CANCELLED;
 
-    MenuActionContext(Player target, double avgProbability, String detections) {
-        this.target = target;
-        this.avgProbability = avgProbability;
-        this.detections = detections;
+    public static ReportStatus fromString(String value) {
+        if (value == null) {
+            return OPEN;
+        }
+        switch (value.trim().toLowerCase(Locale.ROOT)) {
+            case "claimed":
+                return CLAIMED;
+            case "closed":
+                return CLOSED;
+            case "cancelled":
+            case "canceled":
+                return CANCELLED;
+            default:
+                return OPEN;
+        }
     }
 
-    Player target() {
-        return target;
-    }
-
-    double avgProbability() {
-        return avgProbability;
-    }
-
-    String detections() {
-        return detections;
+    public String apiValue() {
+        return name().toLowerCase(Locale.ROOT);
     }
 }

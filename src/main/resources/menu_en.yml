@@ -1,0 +1,117 @@
+gui:
+  title: "&8» &cMLSAC &8| &7Suspects"
+  size: 54
+  loading: "&7Loading..."
+
+  mode:
+    to-checks:
+      material: COMPASS
+      name: "&fReports &8| &7click: checks"
+    to-reports:
+      material: WRITABLE_BOOK
+      name: "&fChecks &8| &7click: reports"
+
+  items:
+    suspect_head:
+      name: "&c{PLAYER}"
+      lore:
+        - "&8▪ &7Avg chance &8» &f{AVG_PROB}"
+        - "&8▪ &7Last &f{HISTORY_SIZE}"
+        - "{HISTORY}"
+        - ""
+        - "&8▪ &eLMB &8» &fteleport"
+        - "&8▪ &ePMB &8» &fall checks"
+    previous_page:
+      material: ARROW
+      name: "&7« Back &8({PAGE})"
+    next_page:
+      material: ARROW
+      name: "&7Next » &8({PAGE})"
+    page_info:
+      material: PAPER
+      name: "&fPage &7{CURRENT}&8/&7{TOTAL}"
+    filler:
+      material: GRAY_STAINED_GLASS_PANE
+      name: " "
+
+  reports:
+    empty:
+      name: "&7No reports"
+    refresh:
+      material: CLOCK
+      name: "&aRefresh"
+  report_head:
+    name: "&c{PLAYER}"
+    local-tag: "&8(here)"
+    lore:
+      - "&8▪ &7From &8» &f{REPORTER}"
+      - "&8▪ &7Reason &8» &f{REASON}"
+      - "&8▪ &7Status &8» {STATUS}"
+      - "&8▪ &7Server &8» &f{SERVER}"
+      - "&8▪ &7Taken by &8» &f{HANDLER}"
+      - ""
+      - "&8▪ &7Checks &8» &f{CHECKS_SIZE}"
+      - "{CHECKS}"
+      - ""
+      - "&eClick &8» &ftake report"
+
+  vision:
+    title: "&8» &cMLS VISION"
+    empty: "&7Nobody from the list is online"
+    risk-confirmed: "&cconfirmed"
+    risk-suspect: "&esuspect"
+    click-teleport: "&eClick &8» &fteleport (GM3)"
+
+  report-actions:
+    title: "&8» &c{PLAYER} &8| &7{HANDLER}"
+    info:
+      enabled: true
+      name: "&c{PLAYER}"
+      lore:
+        - "&8▪ &7Playtime &8» &f{PLAYTIME}"
+        - "&8▪ &7Status &8» &f{STATUS}"
+        - ""
+        - "&eClick &8» &fchecks"
+    tp:
+      enabled: true
+      material: COMPASS
+      name: "&aTeleport &8| &7GM3"
+    zero-damage:
+      enabled: true
+      material: SHIELD
+      name: "&fDamage from player &8» {STATE}"
+    double-damage:
+      enabled: true
+      material: DIAMOND_SWORD
+      name: "&fDouble damage to him &8» {STATE}"
+    close:
+      enabled: true
+      material: LIME_DYE
+      name: "&aClose report"
+      lore:
+        - "&7Type the reason in chat"
+    back:
+      material: ARROW
+      name: "&7« Back"
+    exit:
+      material: BARRIER
+      name: "&cExit"
+
+  checks:
+    title: "&8» &7Checks &8| &c{PLAYER}"
+    pane:
+      name: "&fCheck &7#{INDEX}"
+      lore:
+        - "&8▪ &7Chance &8» {PERCENT}"
+    empty:
+      name: "&7No checks"
+    info:
+      material: PAPER
+      name: "&f{PLAYER}"
+      lore: "&8▪ &7Total &8» &f{COUNT}"
+    back:
+      material: ARROW
+      name: "&7« Back"
+    exit:
+      material: BARRIER
+      name: "&cExit"

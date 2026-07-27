@@ -36,17 +36,35 @@ import java.io.File;
 import java.io.IOException;
 
 public class MenuConfig {
+    private static final java.util.Set<String> SUPPORTED_LANGS = java.util.Set.of("en", "ru", "vi");
+
     private final JavaPlugin plugin;
     private FileConfiguration config;
     private File configFile;
+    private String language;
 
     public MenuConfig(JavaPlugin plugin) {
         this.plugin = plugin;
-        this.configFile = new File(plugin.getDataFolder(), "menu.yml");
+        this.language = "en";
+        this.configFile = new File(plugin.getDataFolder(), "menu_en.yml");
+    }
+
+    /** Picks the menu file for a language, mirroring {@link MessagesConfig#setLanguage(String)}. */
+    public void setLanguage(String lang) {
+        this.language = SUPPORTED_LANGS.contains(lang) ? lang : "en";
+        this.configFile = new File(plugin.getDataFolder(), "menu_" + this.language + ".yml");
     }
 
     public void load() {
-        config = ConfigSyncUtil.loadAndSync(plugin, "menu.yml", configFile);
+        String fileName = "menu_" + language + ".yml";
+        if (!configFile.exists()) {
+            try {
+                plugin.saveResource(fileName, false);
+            } catch (IllegalArgumentException e) {
+                plugin.getLogger().warning("Could not save " + fileName + ": " + e.getMessage());
+            }
+        }
+        config = ConfigSyncUtil.loadAndSync(plugin, fileName, configFile);
     }
 
     public FileConfiguration getConfig() {
@@ -62,7 +80,7 @@ public class MenuConfig {
         try {
             config.save(configFile);
         } catch (IOException e) {
-            plugin.getLogger().severe("Could not save menu.yml!");
+            plugin.getLogger().severe("Could not save " + configFile.getName() + "!");
         }
     }
 

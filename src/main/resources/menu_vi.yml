@@ -1,0 +1,117 @@
+gui:
+  title: "&8» &cMLSAC &8| &7Nghi vấn"
+  size: 54
+  loading: "&7Đang tải..."
+
+  mode:
+    to-checks:
+      material: COMPASS
+      name: "&fBáo cáo &8| &7bấm: kiểm tra"
+    to-reports:
+      material: WRITABLE_BOOK
+      name: "&fKiểm tra &8| &7bấm: báo cáo"
+
+  items:
+    suspect_head:
+      name: "&c{PLAYER}"
+      lore:
+        - "&8▪ &7Tỉ lệ TB &8» &f{AVG_PROB}"
+        - "&8▪ &7Gần nhất &f{HISTORY_SIZE}"
+        - "{HISTORY}"
+        - ""
+        - "&8▪ &eChuột trái &8» &fdịch chuyển"
+        - "&8▪ &eChuột phải &8» &ftất cả kiểm tra"
+    previous_page:
+      material: ARROW
+      name: "&7« Trước &8({PAGE})"
+    next_page:
+      material: ARROW
+      name: "&7Sau » &8({PAGE})"
+    page_info:
+      material: PAPER
+      name: "&fTrang &7{CURRENT}&8/&7{TOTAL}"
+    filler:
+      material: GRAY_STAINED_GLASS_PANE
+      name: " "
+
+  reports:
+    empty:
+      name: "&7Không có báo cáo"
+    refresh:
+      material: CLOCK
+      name: "&aLàm mới"
+  report_head:
+    name: "&c{PLAYER}"
+    local-tag: "&8(ở đây)"
+    lore:
+      - "&8▪ &7Từ &8» &f{REPORTER}"
+      - "&8▪ &7Lý do &8» &f{REASON}"
+      - "&8▪ &7Trạng thái &8» {STATUS}"
+      - "&8▪ &7Máy chủ &8» &f{SERVER}"
+      - "&8▪ &7Người nhận &8» &f{HANDLER}"
+      - ""
+      - "&8▪ &7Kiểm tra &8» &f{CHECKS_SIZE}"
+      - "{CHECKS}"
+      - ""
+      - "&eBấm &8» &fnhận báo cáo"
+
+  vision:
+    title: "&8» &cMLS VISION"
+    empty: "&7Không ai trong danh sách đang online"
+    risk-confirmed: "&cxác nhận"
+    risk-suspect: "&enghi vấn"
+    click-teleport: "&eBấm &8» &fdịch chuyển (GM3)"
+
+  report-actions:
+    title: "&8» &c{PLAYER} &8| &7{HANDLER}"
+    info:
+      enabled: true
+      name: "&c{PLAYER}"
+      lore:
+        - "&8▪ &7Thời gian chơi &8» &f{PLAYTIME}"
+        - "&8▪ &7Trạng thái &8» &f{STATUS}"
+        - ""
+        - "&eBấm &8» &fkiểm tra"
+    tp:
+      enabled: true
+      material: COMPASS
+      name: "&aDịch chuyển &8| &7GM3"
+    zero-damage:
+      enabled: true
+      material: SHIELD
+      name: "&fSát thương từ người chơi &8» {STATE}"
+    double-damage:
+      enabled: true
+      material: DIAMOND_SWORD
+      name: "&fSát thương gấp đôi lên hắn &8» {STATE}"
+    close:
+      enabled: true
+      material: LIME_DYE
+      name: "&aĐóng báo cáo"
+      lore:
+        - "&7Nhập lý do vào chat"
+    back:
+      material: ARROW
+      name: "&7« Quay lại"
+    exit:
+      material: BARRIER
+      name: "&cThoát"
+
+  checks:
+    title: "&8» &7Kiểm tra &8| &c{PLAYER}"
+    pane:
+      name: "&fKiểm tra &7#{INDEX}"
+      lore:
+        - "&8▪ &7Tỉ lệ &8» {PERCENT}"
+    empty:
+      name: "&7Chưa có kiểm tra"
+    info:
+      material: PAPER
+      name: "&f{PLAYER}"
+      lore: "&8▪ &7Tổng &8» &f{COUNT}"
+    back:
+      material: ARROW
+      name: "&7« Quay lại"
+    exit:
+      material: BARRIER
+      name: "&cThoát"

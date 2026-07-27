@@ -28,7 +28,12 @@
 
 package wtf.mlsac.server;
 
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
+
+import wtf.mlsac.report.Report;
+import wtf.mlsac.report.ReportStatus;
 
 public interface IAIClient {
     CompletableFuture<Boolean> connect();
@@ -47,6 +52,28 @@ public interface IAIClient {
     default CompletableFuture<Boolean> reportPunish(String playerUuid, String playerName,
             String model, double probability, double buffer, int violationLevel,
             String action, String command) {
+        return CompletableFuture.completedFuture(false);
+    }
+
+    /** Submits a new player report to the backend queue. */
+    default CompletableFuture<Boolean> submitReport(String reporterUuid, String reporterName,
+            String targetUuid, String targetName, String reason, List<Double> checks, boolean crossServer) {
+        return CompletableFuture.completedFuture(false);
+    }
+
+    /** Fetches the active report queue visible to this server (optionally including cross-server reports). */
+    default CompletableFuture<List<Report>> fetchReports(boolean crossReports) {
+        return CompletableFuture.completedFuture(Collections.emptyList());
+    }
+
+    /** Players MLS VISION flagged on this server, for the /mlsac vision menu. */
+    default CompletableFuture<List<wtf.mlsac.vision.FlaggedPlayer>> fetchFlaggedPlayers() {
+        return CompletableFuture.completedFuture(Collections.emptyList());
+    }
+
+    /** Transitions a report to a new status (claim / close / cancel). */
+    default CompletableFuture<Boolean> updateReport(int reportId, ReportStatus status,
+            String handlerName, String cancelReason) {
         return CompletableFuture.completedFuture(false);
     }
 

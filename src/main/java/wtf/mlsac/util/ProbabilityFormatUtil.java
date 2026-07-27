@@ -1,3 +1,31 @@
+/*
+ * Copyright (C) 2026 MLSAC Team
+ * MLSAC is a GPLv3 licensed fork of a Minecraft anti-cheat system.
+ * This project is community-maintained and not affiliated with any single upstream repository.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ *
+ * This file is based on GPLv3 licensed work and includes modifications.
+ * Derived from:
+ *   - Shard (© 2025 KaelusAI, https://github.com/KaelusAI/Shard)
+ *   - Grim (© 2025 GrimAnticheat, https://github.com/GrimAnticheat/Grim)
+ *   - Client-side project (GPLv3: https://github.com/MLSAC/client-side)
+ *
+ * Modifications:
+ *   - Modified by SoMax1soft for the MLSAC.NET project in 2026.
+ */
+
 package wtf.mlsac.util;
 
 import wtf.mlsac.data.AIPlayerData;
@@ -29,11 +57,11 @@ public final class ProbabilityFormatUtil {
                 // {MODEL}: probability of the most recent response, regardless of which model.
                 .replace("{MODEL}", formatter.apply(data.getLastProbability()))
                 .replace("{AVG}", formatter.apply(data.getAverageProbability()))
-                .replace("{LAST-FAST}", formatter.apply(data.getLastProbabilityContains("fast")))
-                .replace("{FAST}", formatter.apply(data.getLastProbabilityContains("fast")))
+                .replace("{LAST-FAST}", formatter.apply(getFastOrMiniLast(data)))
+                .replace("{FAST}", formatter.apply(getFastOrMiniLast(data)))
                 .replace("{LAST-PRO}", formatter.apply(data.getLastProbability("pro")))
                 .replace("{LAST-ULTRA}", formatter.apply(data.getLastProbability("ultra")))
-                .replace("{AVG-FAST}", formatter.apply(data.getAverageProbability("fast")))
+                .replace("{AVG-FAST}", formatter.apply(getFastOrMiniAvg(data)))
                 .replace("{AVG-PRO}", formatter.apply(data.getAverageProbability("pro")))
                 .replace("{AVG-ULTRA}", formatter.apply(data.getAverageProbability("ultra")));
     }
@@ -58,10 +86,21 @@ public final class ProbabilityFormatUtil {
         return parts.isEmpty() ? "-" : String.join(" ", parts);
     }
 
+    private static double getFastOrMiniLast(AIPlayerData data) {
+        double fast = data.getLastProbabilityContains("fast");
+        return fast > 0.0D ? fast : data.getLastProbabilityContains("mini");
+    }
+
+    private static double getFastOrMiniAvg(AIPlayerData data) {
+        double fast = data.getAverageProbability("fast");
+        return fast > 0.0D ? fast : data.getAverageProbability("mini");
+    }
+
     private static String resolveTemplate(String modelName, String fastFormat, String proFormat, String ultraFormat) {
         String normalized = modelName == null ? "unknown" : modelName.toLowerCase(Locale.ROOT);
         switch (normalized) {
             case "fast":
+            case "mini":
                 return fastFormat;
             case "pro":
                 return proFormat;

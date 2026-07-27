@@ -321,19 +321,41 @@ public class AlertManager {
         return color + percent + "%";
     }
 
+    /**
+     * Resolves the configured sound name against this server's Bukkit {@link Sound} enum.
+     *
+     * <p>Sound constants change between Minecraft versions, so a name chosen on the site can be
+     * unknown here; the default is used instead of going silent. Returns {@code null} only when
+     * the default is missing too.
+     */
+    private Sound resolveAlertSound() {
+        String configured = config.getAlertSoundType();
+        try {
+            return Sound.valueOf(configured);
+        } catch (IllegalArgumentException unknownName) {
+            try {
+                Sound fallback = Sound.valueOf(Config.DEFAULT_ALERT_SOUND_TYPE);
+                logger.warning("Unknown alert sound '" + configured + "' on this server version - using "
+                        + Config.DEFAULT_ALERT_SOUND_TYPE);
+                return fallback;
+            } catch (IllegalArgumentException fallbackAlsoUnknown) {
+                logger.warning("Invalid sound type: " + configured);
+                return null;
+            }
+        }
+    }
+
     private void playAlertSound() {
         if (!config.isAlertSoundEnabled()) {
             return;
         }
         
-        Sound sound;
-        try {
-            sound = Sound.valueOf(config.getAlertSoundType());
-        } catch (IllegalArgumentException e) {
-            logger.warning("Invalid sound type: " + config.getAlertSoundType());
+        final Sound sound = resolveAlertSound();
+        if (sound == null) {
             return;
         }
-        
+
+
         float volume = config.getAlertSoundVolume();
         float pitch = config.getAlertSoundPitch();
         dispatch(playersWithAlerts, false,

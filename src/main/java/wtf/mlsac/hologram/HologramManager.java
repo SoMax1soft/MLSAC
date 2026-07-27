@@ -449,7 +449,7 @@ public class HologramManager {
     private String formatModelResult(AIPlayerData.ModelProbabilityEntry entry) {
         String modelName = entry.getModelName().toLowerCase();
         String formatKey;
-        if (modelName.contains("fast")) {
+        if (modelName.contains("fast") || modelName.contains("mini")) {
             formatKey = "nametags.fast-format";
         } else if (modelName.contains("pro")) {
             formatKey = "nametags.pro-format";

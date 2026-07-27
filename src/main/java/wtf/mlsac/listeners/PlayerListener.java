@@ -104,7 +104,6 @@ public class PlayerListener implements Listener {
                                     ChatColor.GOLD + "=================================================");
                             player.sendMessage(ChatColor.YELLOW + "A NEW MLSAC UPDATE IS AVAILABLE: "
                                     + ChatColor.WHITE + plugin.getUpdateChecker().getLatestVersion());
-                            player.sendMessage(ChatColor.YELLOW + "The updater downloads it automatically. Restart the server to apply it.");
                             player.sendMessage(
                                     ChatColor.GOLD + "=================================================");
                         }
@@ -150,6 +149,9 @@ public class PlayerListener implements Listener {
         }
         if (plugin.getDetectionResponseManager() != null) {
             plugin.getDetectionResponseManager().handlePlayerQuit(player);
+        }
+        if (plugin.getReportManager() != null) {
+            plugin.getReportManager().handlePlayerQuit(player.getUniqueId());
         }
         if (sessionManager != null) {
             sessionManager.removeAimProcessor(player.getUniqueId());

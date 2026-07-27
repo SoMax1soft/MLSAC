@@ -1,0 +1,110 @@
+# ╔═══════════════════════════════════════════════════════════════════════════════╗
+# ║                    MLSAC managed configuration defaults                       ║
+# ╚═══════════════════════════════════════════════════════════════════════════════╝
+#
+# These sections are edited on https://mlsac.net (Настройки -> Тестовый режим, then Конфиги) and
+# delivered as a named preset, selected by `remote-config.preset` in config.yml.
+#
+# Bundled inside the jar and never written to plugins/MLSAC/. Bottom layer of the configuration
+# stack, used whenever no preset is available: test mode off, no preset with that name, or the
+# backend unreachable.
+#
+# Layer order, lowest priority first:
+#   1. this file
+#   2. plugins/MLSAC/config.yml  (only where the key is still present - legacy installs)
+#   3. the preset fetched from the MLSAC API
+#
+# Editing this file has no effect; it lives inside the jar. Change the preset on the site.
+
+detection:
+  worldguard:
+    enabled: true
+    disabled-regions:
+      - "spawn:spawn"
+  models:
+    fast:
+      name: "Fast"
+      enabled: true
+      only-alert: false
+    pro:
+      name: "Pro"
+      enabled: true
+      only-alert: false
+    ultra:
+      name: "Ultra"
+      enabled: true
+      only-alert: false
+    experimental:
+      name: "Experimental"
+      enabled: true
+      only-alert: true
+
+alerts:
+  threshold: 0.80
+  console: false
+  sound:
+    enabled: true
+    type: "BLOCK_NOTE_BLOCK_PLING"
+    volume: 1.0
+    pitch: 1.0
+
+violation:
+  threshold: 40
+  reset-value: 20
+  multiplier: 45.0
+  decay:
+    threshold: 0.50
+    amount: 1.5
+  vl-decay:
+    enabled: false
+    interval: 1500
+    amount: 1
+
+penalties:
+  animation:
+    enabled: true
+    type: "classic_ban"
+  actions:
+    1: "kick {PLAYER} MLSAC Detection (VL:{VL})"
+    2: "{ANIMATION} ban {PLAYER} Cheating (MLSAC VL:{VL})"
+
+alert-responses:
+  enabled: true
+  alerts:
+    buffer-step-percent: 0.33
+  damage-reduction:
+    enabled: true
+    stages:
+      - buffer: 10.0
+        reduction-percent: 5
+        duration-seconds: 8
+      - buffer: 20.0
+        reduction-percent: 35
+        duration-seconds: 12
+      - buffer: 30.0
+        reduction-percent: 70
+        duration-seconds: 16
+  troll:
+    enabled: false
+    actions:
+      - type: "shuffle_inventory"
+        buffer: 20.0
+        cooldown-seconds: 20
+        only-sword: true
+        horizontal-velocity: 1.4
+        vertical-velocity: 0.45
+        message: "&#F1F1F1▍ &#D8D8D8M&#BFBFBFL&#A6A6A6S&#8D8D8DA&#747474C &f{PLAYER} &7Forced to shuffle his inventory at &#EE1955(&#EE1955B&#E81750u&#E2154Bf&#DC1245f&#D61040e&#CF0E3Br: &f{BUFFER}&#EE1955)&f"
+      - type: "drop_weapon"
+        buffer: 35.0
+        cooldown-seconds: 20
+        only-sword: true
+        horizontal-velocity: 1.9
+        vertical-velocity: 0.55
+        message: "&#F1F1F1▍ &#D8D8D8M&#BFBFBFL&#A6A6A6S&#8D8D8DA&#747474C &f{PLAYER} &7Forced to drop his weapon at &#EE1955(&#EE1955B&#E81750u&#E2154Bf&#DC1245f&#D61040e&#CF0E3Br: &f{BUFFER}&#EE1955)&f"
+      - type: "launch"
+        buffer: 45.0
+        cooldown-seconds: 15
+        only-sword: false
+        horizontal-velocity: 1.2
+        vertical-velocity: 0.6
+        message: "&c{PLAYER} &7was launched at buffer &f{BUFFER}&7."

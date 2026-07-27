@@ -1,17 +1,14 @@
 prefix: '&#F1F1F1▍ &#D8D8D8M&#BFBFBFL&#A6A6A6S&#8D8D8DA&#747474C &r'
+report-prefix: '&e▍ &6Reports &8> &r'
 
 alerts-enabled: '&fAlerts &aenabled'
 alerts-disabled: '&fAlerts &cdisabled'
 monitor-enabled: '&fMonitor mode &aenabled &7| all detections shown'
 monitor-disabled: '&fMonitor mode &cdisabled'
 monitor-format: '&#F1F1F1▍ &#D8D8D8M&#BFBFBFL&#A6A6A6S&#8D8D8DA&#747474C &r&#81FFC2[{MODEL}]&f &f{PLAYER} &7- {PROBABILITY_COLORED}'
-# Local alert shown on the server where the violation was detected.
-# Optional placeholder: {STEP_PERCENT} — when the alert is fired from a buffer-step crossing
-# (alert-responses.alerts.buffer-step-percent), resolves to 33/66/99/...; empty otherwise.
 alert-format: '&#81FFC2[{MODEL}]&f &f{PLAYER} &7Failed check &#E5396A(&#E5396AA&#E6366Ai&#E7346Am&#E83169-&#E92F69A&#EA2C69i: &f{PROBABILITY}&#E5396A)&f
   &#E5396A(&#E5396AB&#E6366Au&#E7346Af&#E83169f&#E92F69e&#EA2C69r: &f{BUFFER}&#E5396A)&f'
 alert-format-vl: '&f{PLAYER} &7Got VL &#E5396A(&#E5396AVL:&f{VL}&#E5396A) &#E5396A(&#E5396AB&#E6366Au&#E7346Af&#E83169f&#E92F69e&#EA2C69r: &f{BUFFER}&#E5396A)'
-# Alert received from another server through inter-server mode.
 interserver-alert-format: '&#81FFC2[{MODEL}]&f &#1E9F9A[Cross-server: &#19EEE6{SERVER}&#1E9F9A] &f{PLAYER} &7Failed check &#E5396A(&#E5396AA&#E6366Ai&#E7346Am&#E83169-&#E92F69A&#EA2C69i: &f{PROBABILITY}&#E5396A)&f
   &#E5396A(&#E5396AB&#E6366Au&#E7346Af&#E83169f&#E92F69e&#EA2C69r: &f{BUFFER}&#E5396A)&f'
 unknown-command: '&cUnknown command: &f{ARGS}'
@@ -30,7 +27,6 @@ falsepositive-usage: '&fUsage: &7/mlsac falsepositive restore <player>'
 falsepositive-no-data: '&cCan''t save, no buffer before'
 
 actionbar-format: '&f&l● {MODEL}% &7| {STATUS} {BUFFER} &7| &bvl {VL}'
-# {STATUS} arrow shown in the actionbar: UP when the buffer is rising, DOWN when falling.
 STATUS_UP: '&e▲'
 STATUS_DOWN: '&e▼'
 
@@ -68,6 +64,29 @@ suspects-teleport: '&aTeleported to &f{PLAYER}'
 suspects-teleport-spectator: '&aTeleported to &f{PLAYER} &7(Spectator)'
 suspects-player-offline: '&cPlayer offline'
 suspects-invalid-action: '&cInvalid action: &f{ACTION}'
+
+# ── Player reports (/report) ──────────────────────────────────────────────
+report-usage: '&fUsage: &7/report <nick> <reason>'
+report-self: '&cYou cannot report yourself'
+report-cooldown: '&cPlease wait &f{SECONDS}s &cbefore reporting again'
+report-submitted: '&aReport on &f{PLAYER} &asent to the staff'
+report-failed: '&cCould not send the report right now, try again later'
+report-notify-staff: '&e▍ &fReported &f{PLAYER}&7: &f{REASON}'
+report-notify-staff-cross: '&e▍ &#1E9F9A[&#19EEE6{SERVER}&#1E9F9A] &f{REPORTER} &7reported &f{PLAYER}&7: &f{REASON}'
+report-notify-closed: '&e▍ &f{ADMIN} &7closed report on &f{PLAYER}&7 (Reason: &f{REASON}&7)'
+report-claimed: '&aYou are now watching &f{PLAYER} &7(report claimed)'
+report-closed: '&aReport on &f{PLAYER} &aclosed'
+report-cancelled: '&cReport &f{PLAYER} &ccancelled'
+report-cancel-prompt: '&eType the close reason for the report on &f{PLAYER} &ein chat, or type &fcancel &eto abort'
+report-cancel-aborted: '&7Report cancellation aborted'
+report-action-failed: '&cCould not update the report, try again later'
+report-claimed-by-other: '&cReport already taken by &f{HANDLER}'
+vision-alert: '&e▍ &6MLS VISION &8> &fNew on the list: &c{PLAYER} &7— {VERDICT}'
+vision-disabled: '&cMLS VISION is not connected on this server'
+report-teleport-unavailable: '&cTeleport is unavailable for reports from another server'
+report-watch-started: '&aYou are now watching &f{PLAYER} &7(spectator)'
+report-watch-offline: '&cPlayer &f{PLAYER} &cis no longer online'
+report-watch-cross-server: '&eJOIN SERVER &f{SERVER}'
 
 punish-success: '&aPunished &f{PLAYER} &7({ACTION})'
 punish-no-action: '&cNo punishment actions'

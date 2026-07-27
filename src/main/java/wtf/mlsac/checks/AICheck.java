@@ -261,6 +261,12 @@ public class AICheck {
             return;
         }
         String modelName = response.getModel();
+        // A model switched off in the preset acts on nothing: drop the prediction before it can
+        // reach the monitor, the violation buffer or the punishment ladder.
+        if (!config.isModelEnabled(modelName)) {
+            plugin.debug("[AI] Model " + modelName + " is disabled, dropping response for " + playerName);
+            return;
+        }
         boolean isOnlyAlert = config.isOnlyAlertForModel(modelName);
 
         plugin.debug("[AI] Response for " + playerName + ": probability=" +

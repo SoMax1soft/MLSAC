@@ -1,0 +1,117 @@
+gui:
+  title: "&8» &cMLSAC &8| &7Подозрительные"
+  size: 54
+  loading: "&7Загрузка..."
+
+  mode:
+    to-checks:
+      material: COMPASS
+      name: "&fРепорты &8| &7нажми: проверки"
+    to-reports:
+      material: WRITABLE_BOOK
+      name: "&fПроверки &8| &7нажми: репорты"
+
+  items:
+    suspect_head:
+      name: "&c{PLAYER}"
+      lore:
+        - "&8▪ &7Средний шанс &8» &f{AVG_PROB}"
+        - "&8▪ &7Последние &f{HISTORY_SIZE}"
+        - "{HISTORY}"
+        - ""
+        - "&8▪ &eЛКМ &8» &fтелепорт"
+        - "&8▪ &eПКМ &8» &fвсе проверки"
+    previous_page:
+      material: ARROW
+      name: "&7« Назад &8({PAGE})"
+    next_page:
+      material: ARROW
+      name: "&7Вперёд » &8({PAGE})"
+    page_info:
+      material: PAPER
+      name: "&fСтраница &7{CURRENT}&8/&7{TOTAL}"
+    filler:
+      material: GRAY_STAINED_GLASS_PANE
+      name: " "
+
+  reports:
+    empty:
+      name: "&7Репортов нет"
+    refresh:
+      material: CLOCK
+      name: "&aОбновить"
+  report_head:
+    name: "&c{PLAYER}"
+    local-tag: "&8(тут)"
+    lore:
+      - "&8▪ &7От кого &8» &f{REPORTER}"
+      - "&8▪ &7Причина &8» &f{REASON}"
+      - "&8▪ &7Статус &8» {STATUS}"
+      - "&8▪ &7Сервер &8» &f{SERVER}"
+      - "&8▪ &7Взял &8» &f{HANDLER}"
+      - ""
+      - "&8▪ &7Проверки &8» &f{CHECKS_SIZE}"
+      - "{CHECKS}"
+      - ""
+      - "&eНажми &8» &fвзять репорт"
+
+  vision:
+    title: "&8» &cMLS VISION"
+    empty: "&7Никого из списка нет в сети"
+    risk-confirmed: "&cподтверждён"
+    risk-suspect: "&eподозрительный"
+    click-teleport: "&eНажми &8» &fтелепорт (GM3)"
+
+  report-actions:
+    title: "&8» &c{PLAYER} &8| &7{HANDLER}"
+    info:
+      enabled: true
+      name: "&c{PLAYER}"
+      lore:
+        - "&8▪ &7Наиграно &8» &f{PLAYTIME}"
+        - "&8▪ &7Статус &8» &f{STATUS}"
+        - ""
+        - "&eНажми &8» &fпроверки"
+    tp:
+      enabled: true
+      material: COMPASS
+      name: "&aТелепорт &8| &7GM3"
+    zero-damage:
+      enabled: true
+      material: SHIELD
+      name: "&fУрон от игрока &8» {STATE}"
+    double-damage:
+      enabled: true
+      material: DIAMOND_SWORD
+      name: "&fДвойной урон по нему &8» {STATE}"
+    close:
+      enabled: true
+      material: LIME_DYE
+      name: "&aЗакрыть репорт"
+      lore:
+        - "&7Причину напиши в чат"
+    back:
+      material: ARROW
+      name: "&7« Назад"
+    exit:
+      material: BARRIER
+      name: "&cВыход"
+
+  checks:
+    title: "&8» &7Проверки &8| &c{PLAYER}"
+    pane:
+      name: "&fПроверка &7#{INDEX}"
+      lore:
+        - "&8▪ &7Шанс &8» {PERCENT}"
+    empty:
+      name: "&7Проверок нет"
+    info:
+      material: PAPER
+      name: "&f{PLAYER}"
+      lore: "&8▪ &7Всего &8» &f{COUNT}"
+    back:
+      material: ARROW
+      name: "&7« Назад"
+    exit:
+      material: BARRIER
+      name: "&cВыход"

@@ -36,6 +36,7 @@ import java.util.logging.Logger;
 
 public class Config {
     private final boolean debug;
+    private final String language;
     private final String outputDirectory;
     private final boolean aiEnabled;
     private final String aiApiKey;
@@ -72,9 +73,11 @@ public class Config {
     private final String serverIdentityName;
     private final String serverIdentityFamily;
     private final boolean interServerEnabled;
+    private final boolean crossReportsEnabled;
     private final boolean apiEventReportingEnabled;
     private final double apiAlertEventThreshold;
     private final boolean updatesEnabled;
+    private final boolean visionEnabled;
     private final boolean vlDecayEnabled;
     private final int vlDecayIntervalSeconds;
     private final int vlDecayAmount;
@@ -86,12 +89,16 @@ public class Config {
     private final boolean foliaRegionSchedulerEnabled;
     private final Map<String, String> modelNames;
     private final Map<String, Boolean> modelOnlyAlert;
+    private final Map<String, Boolean> modelEnabled;
     private final boolean alertResponsesEnabled;
     private final double aiAlertBufferStepPercent;
     private final boolean damageReductionEnabled;
     private final List<DamageReductionStage> damageReductionStages;
     private final boolean trollEnabled;
     private final List<TrollActionConfig> trollActions;
+    private final String remotePresetName;
+    private final int remoteRefreshMinutes;
+    private final boolean remotePresetApplied;
     public static final boolean DEFAULT_DEBUG = false;
     public static final String DEFAULT_OUTPUT_DIRECTORY = "plugins/MLSAC/data";
     public static final boolean DEFAULT_AI_ENABLED = false;
@@ -127,9 +134,11 @@ public class Config {
     public static final String DEFAULT_SERVER_IDENTITY_NAME = "default";
     public static final String DEFAULT_SERVER_IDENTITY_FAMILY = "default";
     public static final boolean DEFAULT_INTERSERVER_ENABLED = false;
+    public static final boolean DEFAULT_CROSS_REPORTS_ENABLED = false;
     public static final boolean DEFAULT_API_EVENT_REPORTING_ENABLED = true;
     public static final double DEFAULT_API_ALERT_EVENT_THRESHOLD = 0.75;
     public static final boolean DEFAULT_UPDATES_ENABLED = true;
+    public static final boolean DEFAULT_VISION_ENABLED = false;
     public static final boolean DEFAULT_VL_DECAY_ENABLED = true;
     public static final int DEFAULT_VL_DECAY_INTERVAL_SECONDS = 60;
     public static final int DEFAULT_VL_DECAY_AMOUNT = 1;
@@ -141,9 +150,17 @@ public class Config {
     public static final boolean DEFAULT_FOLIA_REGION_SCHEDULER_ENABLED = true;
     public static final boolean DEFAULT_ALERT_RESPONSES_ENABLED = true;
     public static final double DEFAULT_AI_ALERT_BUFFER_STEP_PERCENT = 0.33;
+    public static final String DEFAULT_REMOTE_PRESET = "";
+    public static final int DEFAULT_REMOTE_REFRESH_MINUTES = 5;
+    public static final int MIN_REMOTE_REFRESH_MINUTES = 1;
+    public static final int MAX_REMOTE_REFRESH_MINUTES = 1440;
+    /** Same character set the API enforces on preset names. */
+    private static final java.util.regex.Pattern PRESET_NAME_PATTERN =
+            java.util.regex.Pattern.compile("^[A-Za-z0-9_-]{1,32}$");
 
     public Config() {
         this.debug = DEFAULT_DEBUG;
+        this.language = "ru";
         this.outputDirectory = DEFAULT_OUTPUT_DIRECTORY;
         this.aiEnabled = DEFAULT_AI_ENABLED;
         this.aiApiKey = DEFAULT_AI_API_KEY;
@@ -180,9 +197,11 @@ public class Config {
         this.serverIdentityName = DEFAULT_SERVER_IDENTITY_NAME;
         this.serverIdentityFamily = DEFAULT_SERVER_IDENTITY_FAMILY;
         this.interServerEnabled = DEFAULT_INTERSERVER_ENABLED;
+        this.crossReportsEnabled = DEFAULT_CROSS_REPORTS_ENABLED;
         this.apiEventReportingEnabled = DEFAULT_API_EVENT_REPORTING_ENABLED;
         this.apiAlertEventThreshold = DEFAULT_API_ALERT_EVENT_THRESHOLD;
         this.updatesEnabled = DEFAULT_UPDATES_ENABLED;
+        this.visionEnabled = DEFAULT_VISION_ENABLED;
         this.vlDecayEnabled = DEFAULT_VL_DECAY_ENABLED;
         this.vlDecayIntervalSeconds = DEFAULT_VL_DECAY_INTERVAL_SECONDS;
         this.vlDecayAmount = DEFAULT_VL_DECAY_AMOUNT;
@@ -194,12 +213,43 @@ public class Config {
         this.foliaRegionSchedulerEnabled = DEFAULT_FOLIA_REGION_SCHEDULER_ENABLED;
         this.modelNames = new HashMap<>();
         this.modelOnlyAlert = new HashMap<>();
+        this.modelEnabled = new HashMap<>();
         this.alertResponsesEnabled = DEFAULT_ALERT_RESPONSES_ENABLED;
         this.aiAlertBufferStepPercent = DEFAULT_AI_ALERT_BUFFER_STEP_PERCENT;
         this.damageReductionEnabled = true;
         this.damageReductionStages = createDefaultDamageReductionStages();
         this.trollEnabled = true;
         this.trollActions = createDefaultTrollActions();
+        this.remotePresetName = DEFAULT_REMOTE_PRESET;
+        this.remoteRefreshMinutes = DEFAULT_REMOTE_REFRESH_MINUTES;
+        this.remotePresetApplied = false;
+    }
+
+    /**
+     * Read from the operator's own file only: the preset name decides which remote config to load,
+     * so a remote value here would let one preset redirect the server to another.
+     */
+    private static String readPresetName(FileConfiguration localConfig, Logger logger) {
+        String value = localConfig.getString("remote-config.preset", DEFAULT_REMOTE_PRESET);
+        if (value == null) {
+            return DEFAULT_REMOTE_PRESET;
+        }
+        String trimmed = value.trim();
+        if (trimmed.isEmpty()) {
+            return DEFAULT_REMOTE_PRESET;
+        }
+        if (!PRESET_NAME_PATTERN.matcher(trimmed).matches()) {
+            if (logger != null) {
+                logger.warning("[Config] remote-config.preset '" + trimmed + "' is not a valid preset name"
+                        + " (1-32 chars of A-Z, a-z, 0-9, _ or -) - running on local configuration");
+            }
+            return DEFAULT_REMOTE_PRESET;
+        }
+        return trimmed;
+    }
+
+    private static int clampRefreshMinutes(int minutes) {
+        return Math.max(MIN_REMOTE_REFRESH_MINUTES, Math.min(MAX_REMOTE_REFRESH_MINUTES, minutes));
     }
 
     private static Set<String> createDefaultCheatReasons() {
@@ -211,17 +261,30 @@ public class Config {
     }
 
     public Config(JavaPlugin plugin) {
-        this(plugin, null);
+        this(plugin, null, null);
     }
 
     public Config(JavaPlugin plugin, Logger logger) {
+        this(plugin, logger, null);
+    }
+
+    /**
+     * @param remoteSnapshot preset from the MLSAC API, or {@code null} to run on the bundled
+     *                       defaults plus local config.yml. See {@link ConfigLayers}.
+     */
+    public Config(JavaPlugin plugin, Logger logger, RemoteConfigClient.Snapshot remoteSnapshot) {
         plugin.saveDefaultConfig();
-        FileConfiguration config = plugin.getConfig();
-        
-        // Проверяем и добавляем отсутствующие поля анимации
-        ensureAnimationFields(plugin, config);
-        
+        // Not plugin.getConfig(): managed sections live in the jar's managed-defaults.yml and may
+        // be overridden by the API preset.
+        FileConfiguration config = ConfigLayers.build(plugin, remoteSnapshot);
+
+        this.remotePresetName = readPresetName(plugin.getConfig(), logger);
+        this.remoteRefreshMinutes = clampRefreshMinutes(
+                plugin.getConfig().getInt("remote-config.refresh-minutes", DEFAULT_REMOTE_REFRESH_MINUTES));
+        this.remotePresetApplied = remoteSnapshot != null && remoteSnapshot.hasConfig();
+
         this.debug = config.getBoolean("debug", DEFAULT_DEBUG);
+        this.language = config.getString("language", "ru").trim().toLowerCase(Locale.ROOT);
         this.outputDirectory = config.getString("outputDirectory", DEFAULT_OUTPUT_DIRECTORY);
         this.aiEnabled = config.getBoolean("detection.enabled",
                 config.getBoolean("ai.enabled", DEFAULT_AI_ENABLED));
@@ -251,10 +314,8 @@ public class Config {
             this.aiBufferDecrease = config.getDouble("violation.decay",
                     config.getDouble("ai.buffer.decrease", DEFAULT_AI_BUFFER_DECREASE));
         }
-        this.aiSequence = config.getInt("detection.sample-size",
-                config.getInt("ai.sequence", DEFAULT_AI_SEQUENCE));
-        this.aiStep = config.getInt("detection.sample-interval",
-                config.getInt("ai.step", DEFAULT_AI_STEP));
+        this.aiSequence = DEFAULT_AI_SEQUENCE; // Hardcoded: 40
+        this.aiStep = DEFAULT_AI_STEP;         // Hardcoded: 10
         this.animationEnabled = config.getBoolean("penalties.animation.enabled", DEFAULT_ANIMATION_ENABLED);
         this.animationType = config.getString("penalties.animation.type", DEFAULT_ANIMATION_TYPE);
         this.punishmentCommands = new HashMap<>();
@@ -303,6 +364,8 @@ public class Config {
         this.serverIdentityFamily = config.getString("server-identity.family", DEFAULT_SERVER_IDENTITY_FAMILY);
         this.interServerEnabled = config.getBoolean("server-identity.interserver.enabled",
                 DEFAULT_INTERSERVER_ENABLED);
+        this.crossReportsEnabled = config.getBoolean("server-identity.interserver.cross-reports",
+                DEFAULT_CROSS_REPORTS_ENABLED);
         this.apiEventReportingEnabled = config.getBoolean("server-identity.reporting.events-enabled",
                 DEFAULT_API_EVENT_REPORTING_ENABLED);
         double apiAlertThreshold = config.getDouble("server-identity.reporting.alert-threshold",
@@ -310,6 +373,7 @@ public class Config {
         this.apiAlertEventThreshold = clampThreshold(apiAlertThreshold,
                 "server-identity.reporting.alert-threshold", logger);
         this.updatesEnabled = config.getBoolean("updates.enabled", DEFAULT_UPDATES_ENABLED);
+        this.visionEnabled = config.getBoolean("vision.enabled", DEFAULT_VISION_ENABLED);
         this.vlDecayEnabled = config.getBoolean("violation.vl-decay.enabled", DEFAULT_VL_DECAY_ENABLED);
         this.vlDecayIntervalSeconds = config.getInt("violation.vl-decay.interval", DEFAULT_VL_DECAY_INTERVAL_SECONDS);
         this.vlDecayAmount = config.getInt("violation.vl-decay.amount", DEFAULT_VL_DECAY_AMOUNT);
@@ -324,6 +388,7 @@ public class Config {
 
         this.modelNames = new HashMap<>();
         this.modelOnlyAlert = new HashMap<>();
+        this.modelEnabled = new HashMap<>();
         ConfigurationSection modelsSection = config.getConfigurationSection("detection.models");
         if (modelsSection != null) {
             for (String modelKey : modelsSection.getKeys(false)) {
@@ -331,13 +396,17 @@ public class Config {
                 if (modelSection != null) {
                     String displayName = modelSection.getString("name", modelKey);
                     boolean onlyAlertForModel = modelSection.getBoolean("only-alert", false);
-                    
+                    // Absent means enabled, so configs predating the switch keep every model
+                    // running.
+                    modelEnabled.put(modelKey, modelSection.getBoolean("enabled", true));
+
+                    // Alert-only on the stable models would disable every punishment, so it is
+                    // forced off whichever layer it came from.
                     if (onlyAlertForModel && ("pro".equalsIgnoreCase(modelKey) || "fast".equalsIgnoreCase(modelKey))) {
                         onlyAlertForModel = false;
-                        modelSection.set("only-alert", false);
-                        plugin.saveConfig();
                         if (logger != null) {
-                            logger.info("[Config] Automatically set 'only-alert' to false for model " + modelKey);
+                            logger.info("[Config] Ignoring 'only-alert' for model " + modelKey
+                                    + " - punishments stay enabled for the stable models");
                         }
                     }
 
@@ -348,6 +417,7 @@ public class Config {
                     if (displayName != null && !displayName.isEmpty()) {
                         modelNames.put(modelKey, displayName);
                         modelOnlyAlert.put(modelKey, false);
+                        modelEnabled.put(modelKey, true);
                     }
                 }
             }
@@ -514,6 +584,10 @@ public class Config {
         return debug;
     }
 
+    public String getLanguage() {
+        return language;
+    }
+
     public String getOutputDirectory() {
         return outputDirectory;
     }
@@ -654,6 +728,11 @@ public class Config {
         return interServerEnabled;
     }
 
+    /** Whether player reports are shared across the account's servers (same family). */
+    public boolean isCrossReportsEnabled() {
+        return crossReportsEnabled;
+    }
+
     public boolean isApiEventReportingEnabled() {
         return apiEventReportingEnabled;
     }
@@ -664,6 +743,11 @@ public class Config {
 
     public boolean isUpdatesEnabled() {
         return updatesEnabled;
+    }
+
+    /** Local, coarse switch: does this server collect MLS VISION data at all. Off by default. */
+    public boolean isVisionEnabled() {
+        return visionEnabled;
     }
 
     public boolean isVlDecayEnabled() {
@@ -702,6 +786,18 @@ public class Config {
         return foliaRegionSchedulerEnabled;
     }
 
+    /**
+     * Whether this model may act at all. A disabled model's predictions are dropped on arrival:
+     * no alert, no violation buffer, no punishment. Unknown keys default to enabled, so a model
+     * added server-side works without a config change.
+     */
+    public boolean isModelEnabled(String modelKey) {
+        if (modelKey == null) {
+            return true;
+        }
+        return modelEnabled.getOrDefault(modelKey, true);
+    }
+
     public boolean isOnlyAlertForModel(String modelKey) {
         if (modelKey == null) {
             return false;
@@ -738,6 +834,24 @@ public class Config {
 
     public List<TrollActionConfig> getTrollActions() {
         return trollActions;
+    }
+
+    /** Name from {@code remote-config.preset}; empty when running on local config only. */
+    public String getRemotePresetName() {
+        return remotePresetName;
+    }
+
+    public boolean isRemoteConfigEnabled() {
+        return !remotePresetName.isEmpty();
+    }
+
+    public int getRemoteRefreshMinutes() {
+        return remoteRefreshMinutes;
+    }
+
+    /** True when the values above came from an API preset rather than the local layers. */
+    public boolean isRemotePresetApplied() {
+        return remotePresetApplied;
     }
 
     public static final class DamageReductionStage {
@@ -810,41 +924,6 @@ public class Config {
 
         public String getMessage() {
             return message;
-        }
-    }
-    
-    /**
-     * Проверяет и добавляет отсутствующие поля анимации в config.yml
-     */
-    private void ensureAnimationFields(JavaPlugin plugin, FileConfiguration config) {
-        boolean needsSave = false;
-        
-        // Проверяем наличие секции penalties.animation
-        if (!config.contains("penalties.animation")) {
-            config.set("penalties.animation.enabled", true);
-            config.set("penalties.animation.type", "classic_ban");
-            needsSave = true;
-            plugin.getLogger().info("Added missing animation configuration to config.yml");
-        } else {
-            // Проверяем отдельные поля
-            if (!config.contains("penalties.animation.enabled")) {
-                config.set("penalties.animation.enabled", true);
-                needsSave = true;
-            }
-            if (!config.contains("penalties.animation.type")) {
-                config.set("penalties.animation.type", "classic_ban");
-                needsSave = true;
-            }
-        }
-        
-        // Сохраняем конфиг если были изменения
-        if (needsSave) {
-            try {
-                config.save(new java.io.File(plugin.getDataFolder(), "config.yml"));
-                plugin.getLogger().info("Updated config.yml with new animation fields");
-            } catch (Exception e) {
-                plugin.getLogger().warning("Failed to save updated config.yml: " + e.getMessage());
-            }
         }
     }
 }

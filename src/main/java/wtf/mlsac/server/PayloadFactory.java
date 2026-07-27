@@ -28,10 +28,12 @@
 
 package wtf.mlsac.server;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import wtf.mlsac.Main;
 
 import java.util.Base64;
+import java.util.List;
 import java.util.function.IntSupplier;
 
 /**
@@ -110,6 +112,52 @@ final class PayloadFactory {
         json.addProperty("violationLevel", violationLevel);
         json.addProperty("action", action != null ? action : type);
         json.addProperty("command", command != null ? command : "");
+        return json;
+    }
+
+    JsonObject reportSubmission(String reporterUuid, String reporterName, String targetUuid,
+            String targetName, String reason, List<Double> checks, boolean crossServer, String sessionId) {
+        JsonObject json = base();
+        addSession(json, sessionId);
+        if (reporterUuid != null) {
+            json.addProperty("reporterUuid", reporterUuid);
+        }
+        json.addProperty("reporterName", reporterName);
+        if (targetUuid != null) {
+            json.addProperty("targetUuid", targetUuid);
+        }
+        json.addProperty("targetName", targetName);
+        json.addProperty("reason", reason);
+        json.addProperty("crossServer", crossServer);
+        JsonArray checksArray = new JsonArray();
+        if (checks != null) {
+            for (Double value : checks) {
+                if (value != null) {
+                    checksArray.add(value);
+                }
+            }
+        }
+        json.add("checks", checksArray);
+        return json;
+    }
+
+    JsonObject reportsList(boolean crossReports, String sessionId) {
+        JsonObject json = base();
+        addSession(json, sessionId);
+        json.addProperty("crossReports", crossReports);
+        json.addProperty("status", "active");
+        return json;
+    }
+
+    JsonObject reportTransition(String handlerName, String cancelReason, String sessionId) {
+        JsonObject json = base();
+        addSession(json, sessionId);
+        if (handlerName != null) {
+            json.addProperty("handlerName", handlerName);
+        }
+        if (cancelReason != null) {
+            json.addProperty("cancelReason", cancelReason);
+        }
         return json;
     }
 

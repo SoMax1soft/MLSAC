@@ -33,6 +33,7 @@ import com.sk89q.worldguard.WorldGuard;
 import com.sk89q.worldguard.protection.ApplicableRegionSet;
 import com.sk89q.worldguard.protection.managers.RegionManager;
 import com.sk89q.worldguard.protection.regions.ProtectedRegion;
+import com.sk89q.worldguard.domains.DefaultDomain;
 import com.sk89q.worldguard.protection.regions.RegionContainer;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -172,6 +173,88 @@ public class WorldGuardCompat {
         }
         return result;
     }
+    /**
+     * The owner/member roster of every region in every loaded world.
+     *
+     * <p>This is what MLS VISION cares about. Standing inside a region says nothing — anyone can
+     * walk into a base — but being on its owner or member list is a deliberate grant of trust by
+     * whoever runs that region, which is exactly the relationship worth recording.
+     *
+     * <p>Deliberately not gated on {@link #enabled}: that flag decides whether regions suppress
+     * anticheat checks, which is a different concern.
+     *
+     * <p>Must be called on the main thread — WorldGuard's region managers are not thread-safe.
+     * Names are resolved from the server's local user cache only; entries that cannot be resolved
+     * without a network lookup are skipped rather than blocking the tick.
+     */
+    public List<RegionRoster> getAllRegionRosters() {
+        List<RegionRoster> rosters = new ArrayList<>();
+        if (!worldGuardAvailable) {
+            return rosters;
+        }
+        try {
+            RegionContainer container = WorldGuard.getInstance().getPlatform().getRegionContainer();
+            for (World world : Bukkit.getWorlds()) {
+                RegionManager regionManager = container.get(BukkitAdapter.adapt(world));
+                if (regionManager == null) {
+                    continue;
+                }
+                for (ProtectedRegion region : regionManager.getRegions().values()) {
+                    Set<String> owners = resolveDomain(region.getOwners());
+                    Set<String> members = resolveDomain(region.getMembers());
+                    if (owners.isEmpty() && members.isEmpty()) {
+                        continue;
+                    }
+                    rosters.add(new RegionRoster(region.getId(), world.getName(), owners, members));
+                }
+            }
+        } catch (Exception e) {
+            logger.warning("[WorldGuard] Error reading region rosters: " + e.getMessage());
+        }
+        return rosters;
+    }
+
+    private Set<String> resolveDomain(DefaultDomain domain) {
+        Set<String> names = new LinkedHashSet<>();
+        if (domain == null) {
+            return names;
+        }
+        try {
+            names.addAll(domain.getPlayers()); // entries stored as plain names, already resolved
+            for (UUID uuid : domain.getUniqueIds()) {
+                Player online = Bukkit.getPlayer(uuid);
+                if (online != null) {
+                    names.add(online.getName());
+                    continue;
+                }
+                // Reads the local usercache; null for a uuid this server has never seen, which we
+                // skip rather than asking Mojang and stalling the tick.
+                String cached = Bukkit.getOfflinePlayer(uuid).getName();
+                if (cached != null && !cached.isEmpty()) {
+                    names.add(cached);
+                }
+            }
+        } catch (Exception e) {
+            logger.warning("[WorldGuard] Error resolving region domain: " + e.getMessage());
+        }
+        return names;
+    }
+
+    /** Immutable snapshot of one region's owner and member lists, by player name. */
+    public static final class RegionRoster {
+        public final String regionId;
+        public final String worldName;
+        public final Set<String> owners;
+        public final Set<String> members;
+
+        RegionRoster(String regionId, String worldName, Set<String> owners, Set<String> members) {
+            this.regionId = regionId;
+            this.worldName = worldName;
+            this.owners = owners;
+            this.members = members;
+        }
+    }
+
     public boolean isEnabled() {
         return enabled;
     }

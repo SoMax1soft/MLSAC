@@ -33,19 +33,41 @@ import org.bukkit.plugin.java.JavaPlugin;
 import wtf.mlsac.util.ProbabilityFormatUtil;
 
 import java.io.File;
+import java.util.Set;
 
 public class MessagesConfig {
+    private static final Set<String> SUPPORTED_LANGS = Set.of("en", "ru", "vi");
+
     private final JavaPlugin plugin;
     private FileConfiguration config;
     private File configFile;
+    private String language;
 
     public MessagesConfig(JavaPlugin plugin) {
         this.plugin = plugin;
-        this.configFile = new File(plugin.getDataFolder(), "messages.yml");
+        this.language = "en";
+    }
+
+    /**
+     * Sets the language and resolves the messages file name.
+     * Must be called before {@link #load()}.
+     */
+    public void setLanguage(String lang) {
+        this.language = SUPPORTED_LANGS.contains(lang) ? lang : "en";
     }
 
     public void load() {
-        config = ConfigSyncUtil.loadAndSync(plugin, "messages.yml", configFile);
+        String fileName = "messages_" + language + ".yml";
+        this.configFile = new File(plugin.getDataFolder(), fileName);
+        // Save bundled resource if it doesn't exist on disk yet
+        if (!configFile.exists()) {
+            try {
+                plugin.saveResource(fileName, false);
+            } catch (Exception e) {
+                plugin.getLogger().warning("Could not save " + fileName + ": " + e.getMessage());
+            }
+        }
+        config = ConfigSyncUtil.loadAndSync(plugin, fileName, configFile);
     }
 
     public FileConfiguration getConfig() {
@@ -61,6 +83,11 @@ public class MessagesConfig {
 
     public String getPrefix() {
         return getConfig().getString("prefix", "&6[MLSAC] &r");
+    }
+
+    /** Separate configurable prefix for report messages. Falls back to the main prefix. */
+    public String getReportPrefix() {
+        return getConfig().getString("report-prefix", getPrefix());
     }
 
     public String getMessage(String key) {

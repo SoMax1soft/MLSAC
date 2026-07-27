@@ -45,6 +45,10 @@ public class AIPlayerData {
     private final AimProcessor aimProcessor;
     private final Deque<TickData> tickBuffer;
     private final Deque<Double> probabilityHistory;
+    // Longer rolling window used by the suspects/reports GUIs (the last-N colored checks view).
+    // probabilityHistory is capped at 10 for the compact display; this keeps up to 50.
+    private static final int MAX_RECENT_CHECKS = 50;
+    private final Deque<Double> recentChecks;
     private final Deque<ModelProbabilityEntry> modelProbabilityHistory;
     private final Map<String, Double> lastProbabilitiesByModel;
     private final Map<String, Deque<Double>> probabilityHistoryByModel;
@@ -71,6 +75,7 @@ public class AIPlayerData {
         this.aimProcessor = new AimProcessor();
         this.tickBuffer = new ArrayDeque<>(sequence);
         this.probabilityHistory = new ArrayDeque<>(10);
+        this.recentChecks = new ArrayDeque<>(MAX_RECENT_CHECKS);
         this.modelProbabilityHistory = new ArrayDeque<>(10);
         this.lastProbabilitiesByModel = new HashMap<>();
         this.probabilityHistoryByModel = new HashMap<>();
@@ -184,6 +189,7 @@ public class AIPlayerData {
             tickBuffer.clear();
             tickHistory.clear();
             probabilityHistory.clear();
+            recentChecks.clear();
             modelProbabilityHistory.clear();
             lastProbabilitiesByModel.clear();
             probabilityHistoryByModel.clear();
@@ -253,6 +259,10 @@ public class AIPlayerData {
                 probabilityHistory.pollFirst();
             }
             probabilityHistory.addLast(probability);
+            if (recentChecks.size() >= MAX_RECENT_CHECKS) {
+                recentChecks.pollFirst();
+            }
+            recentChecks.addLast(probability);
             String normalizedModel = normalizeModelName(modelName);
             if (modelProbabilityHistory.size() >= 10) {
                 modelProbabilityHistory.pollFirst();
@@ -349,6 +359,29 @@ public class AIPlayerData {
         lock.readLock().lock();
         try {
             return new ArrayList<>(probabilityHistory);
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    /**
+     * The last (up to 50) detection probabilities in chronological order. Used by the suspects and
+     * reports GUIs to render the colored check history without touching the compact 10-entry window.
+     */
+    public List<Double> getRecentChecks() {
+        lock.readLock().lock();
+        try {
+            return new ArrayList<>(recentChecks);
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    /** Cheap emptiness check that avoids copying the whole window (used to filter the suspects list). */
+    public boolean hasRecentChecks() {
+        lock.readLock().lock();
+        try {
+            return !recentChecks.isEmpty();
         } finally {
             lock.readLock().unlock();
         }

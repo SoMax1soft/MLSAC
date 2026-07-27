@@ -1,3 +1,31 @@
+/*
+ * Copyright (C) 2026 MLSAC Team
+ * MLSAC is a GPLv3 licensed fork of a Minecraft anti-cheat system.
+ * This project is community-maintained and not affiliated with any single upstream repository.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ *
+ * This file is based on GPLv3 licensed work and includes modifications.
+ * Derived from:
+ *   - Shard (© 2025 KaelusAI, https://github.com/KaelusAI/Shard)
+ *   - Grim (© 2025 GrimAnticheat, https://github.com/GrimAnticheat/Grim)
+ *   - Client-side project (GPLv3: https://github.com/MLSAC/client-side)
+ *
+ * Modifications:
+ *   - Modified by SoMax1soft for the MLSAC.NET project in 2026.
+ */
+
 package wtf.mlsac.config;
 
 import org.bukkit.configuration.ConfigurationSection;
@@ -16,11 +44,23 @@ import java.util.Set;
 public final class ConfigSyncUtil {
     private static final String SCHEMA_VERSION_KEY = "_schema-version";
     // Paths preserved across a config schema wipe. Anything else is regenerated from defaults.
+    //
+    // The b49 schema moved worldguard, models, alerts, violation, penalties and alert-responses to
+    // the site, so the bundled config.yml no longer defines them. They stay listed here so an
+    // existing server keeps its locally tuned values after the update; a preset then takes
+    // priority over them.
     private static final Set<String> CONFIG_PRESERVED_PATHS = Collections.unmodifiableSet(
             new java.util.LinkedHashSet<>(java.util.Arrays.asList(
                     "detection.api-key",
                     "detection.enabled",
-                    "penalties.actions")));
+                    "detection.worldguard",
+                    "detection.models",
+                    "remote-config.preset",
+                    "vision.enabled",
+                    "alerts",
+                    "violation",
+                    "penalties",
+                    "alert-responses")));
 
     private ConfigSyncUtil() {
     }
@@ -96,38 +136,45 @@ public final class ConfigSyncUtil {
     }
 
     /**
-     * Wipe-and-replace messages.yml the moment ANY bundled key is missing from the user's file.
-     * Cheaper than per-key patching: message templates change format together, so a partial sync
-     * tends to leave the file inconsistent.
+     * Wipe-and-replace localized messages files (messages_ru.yml, messages_en.yml, messages_vi.yml)
+     * the moment ANY bundled key is missing from the user's file.
      */
     public static boolean wipeMessagesIfAnyKeyMissing(JavaPlugin plugin) {
-        File messagesFile = new File(plugin.getDataFolder(), "messages.yml");
-        if (!messagesFile.exists()) {
-            plugin.saveResource("messages.yml", false);
-            return true;
+        boolean anyRegenerated = false;
+        for (String lang : new String[]{"ru", "en", "vi"}) {
+            String fileName = "messages_" + lang + ".yml";
+            File messagesFile = new File(plugin.getDataFolder(), fileName);
+            if (!messagesFile.exists()) {
+                try {
+                    plugin.saveResource(fileName, false);
+                    anyRegenerated = true;
+                } catch (Exception ignored) {
+                }
+                continue;
+            }
+            try (InputStream bundledStream = plugin.getResource(fileName)) {
+                if (bundledStream == null) {
+                    continue;
+                }
+                YamlConfiguration bundled = YamlConfiguration.loadConfiguration(
+                        new InputStreamReader(bundledStream, StandardCharsets.UTF_8));
+                YamlConfiguration existing = YamlConfiguration.loadConfiguration(messagesFile);
+                String missing = firstMissingLeafKey(bundled, existing, "");
+                if (missing == null) {
+                    continue;
+                }
+                if (!messagesFile.delete()) {
+                    plugin.getLogger().warning(fileName + " wipe failed: cannot delete file");
+                    continue;
+                }
+                plugin.saveResource(fileName, false);
+                plugin.getLogger().info(fileName + " fully regenerated (missing key: " + missing + ")");
+                anyRegenerated = true;
+            } catch (Exception exception) {
+                plugin.getLogger().warning("Failed to wipe " + fileName + ": " + exception.getMessage());
+            }
         }
-        try (InputStream bundledStream = plugin.getResource("messages.yml")) {
-            if (bundledStream == null) {
-                return false;
-            }
-            YamlConfiguration bundled = YamlConfiguration.loadConfiguration(
-                    new InputStreamReader(bundledStream, StandardCharsets.UTF_8));
-            YamlConfiguration existing = YamlConfiguration.loadConfiguration(messagesFile);
-            String missing = firstMissingLeafKey(bundled, existing, "");
-            if (missing == null) {
-                return false;
-            }
-            if (!messagesFile.delete()) {
-                plugin.getLogger().warning("messages.yml wipe failed: cannot delete file");
-                return false;
-            }
-            plugin.saveResource("messages.yml", false);
-            plugin.getLogger().info("messages.yml fully regenerated (missing key: " + missing + ")");
-            return true;
-        } catch (Exception exception) {
-            plugin.getLogger().warning("Failed to wipe messages.yml: " + exception.getMessage());
-            return false;
-        }
+        return anyRegenerated;
     }
 
     private static String firstMissingLeafKey(FileConfiguration bundled, FileConfiguration existing, String path) {
@@ -203,8 +250,14 @@ public final class ConfigSyncUtil {
     public static boolean syncAllPluginConfigs(JavaPlugin plugin) {
         File dataFolder = plugin.getDataFolder();
         boolean changed = syncPluginConfig(plugin);
-        changed |= syncResourceConfig(plugin, "messages.yml", new File(dataFolder, "messages.yml"));
-        changed |= syncResourceConfig(plugin, "menu.yml", new File(dataFolder, "menu.yml"));
+        for (String lang : new String[]{"ru", "en", "vi"}) {
+            String fileName = "messages_" + lang + ".yml";
+            changed |= syncResourceConfig(plugin, fileName, new File(dataFolder, fileName));
+        }
+        for (String lang : new String[]{"ru", "en", "vi"}) {
+            String fileName = "menu_" + lang + ".yml";
+            changed |= syncResourceConfig(plugin, fileName, new File(dataFolder, fileName));
+        }
         changed |= syncResourceConfig(plugin, "holograms.yml", new File(dataFolder, "holograms.yml"));
         return changed;
     }
