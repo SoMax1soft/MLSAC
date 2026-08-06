@@ -196,10 +196,14 @@ public final class RemoteConfigClient {
         if (base == null) {
             return null;
         }
-        return base.newBuilder()
-                .addPathSegments("api/v1/plugin/config")
-                .addQueryParameter("preset", presetName)
-                .build();
+        HttpUrl.Builder builder = base.newBuilder()
+                .addPathSegments("api/v1/plugin/config");
+        // Empty preset name = auto mode: omit the param so the backend resolves the account's
+        // single preset. Sending an empty value would be treated the same, but omitting is cleaner.
+        if (presetName != null && !presetName.isEmpty()) {
+            builder.addQueryParameter("preset", presetName);
+        }
+        return builder.build();
     }
 
     Snapshot parse(String payload) {

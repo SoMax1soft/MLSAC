@@ -89,6 +89,7 @@ public final class Main extends JavaPlugin {
     private wtf.mlsac.vision.VisionEventSender visionEventSender;
     private wtf.mlsac.vision.VisionListener visionListener;
     private wtf.mlsac.vision.VisionWatchList visionWatchList;
+    private wtf.mlsac.antiesp.AntiEspManager antiEspManager;
 
     @Override
     public void onLoad() {
@@ -155,6 +156,9 @@ public final class Main extends JavaPlugin {
 
         this.hologramManager = new HologramManager(this, aiCheck);
         this.hologramManager.start();
+
+        this.antiEspManager = new wtf.mlsac.antiesp.AntiEspManager(this, config);
+        this.antiEspManager.start();
 
         if (config.isAiEnabled()) {
             aiClientProvider.initialize().thenAccept(success -> {
@@ -275,6 +279,9 @@ public final class Main extends JavaPlugin {
                 }
             }
         }
+        if (antiEspManager != null) {
+            antiEspManager.stop();
+        }
         if (dailyStats != null) {
             dailyStats.shutdown();
         }
@@ -348,6 +355,11 @@ public final class Main extends JavaPlugin {
                 }
                 remoteConfigManager = new RemoteConfigManager(this, config);
                 remoteConfigManager.start();
+                if (antiEspManager != null) {
+                    antiEspManager.stop();
+                }
+                antiEspManager = new wtf.mlsac.antiesp.AntiEspManager(this, config);
+                antiEspManager.start();
                 setupVision();
                 getLogger().info("Configuration reloaded!");
             } catch (Exception e) {
@@ -511,12 +523,20 @@ public final class Main extends JavaPlugin {
         return visionEventSender;
     }
 
+    public wtf.mlsac.antiesp.AntiEspManager getAntiEspManager() {
+        return antiEspManager;
+    }
+
     public wtf.mlsac.vision.VisionWatchList getVisionWatchList() {
         return visionWatchList;
     }
 
     public wtf.mlsac.report.ReportManager getReportManager() {
         return reportManager;
+    }
+
+    public RemoteConfigManager getRemoteConfigManager() {
+        return remoteConfigManager;
     }
 
     public AIClientProvider getAiClientProvider() {

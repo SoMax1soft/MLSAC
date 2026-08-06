@@ -94,10 +94,34 @@ class HttpAIClientNetworkTest {
 
         backend = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         backend.setExecutor(Executors.newCachedThreadPool());
-        backend.createContext("/api/v1/init", ex -> respondJson(ex, "{\"sessionId\":\"test-session\"}"));
-        backend.createContext("/api/v1/heartbeat", ex -> respondJson(ex, "{\"success\":true}"));
-        backend.createContext("/api/v1/online", ex -> respondJson(ex, "{\"success\":true}"));
-        backend.createContext("/api/v1/events", ex -> respondJson(ex, "{\"success\":true}"));
+        backend.createContext("/api/v1/init", ex -> {
+            if (predictMode.get() == BackendMode.DROP_CONNECTION) {
+                ex.close();
+                return;
+            }
+            respondJson(ex, "{\"sessionId\":\"test-session\"}");
+        });
+        backend.createContext("/api/v1/heartbeat", ex -> {
+            if (predictMode.get() == BackendMode.DROP_CONNECTION) {
+                ex.close();
+                return;
+            }
+            respondJson(ex, "{\"success\":true}");
+        });
+        backend.createContext("/api/v1/online", ex -> {
+            if (predictMode.get() == BackendMode.DROP_CONNECTION) {
+                ex.close();
+                return;
+            }
+            respondJson(ex, "{\"success\":true}");
+        });
+        backend.createContext("/api/v1/events", ex -> {
+            if (predictMode.get() == BackendMode.DROP_CONNECTION) {
+                ex.close();
+                return;
+            }
+            respondJson(ex, "{\"success\":true}");
+        });
         backend.createContext("/api/v1/predict-stream", this::handlePredict);
         backend.createContext("/api/v1/predict", ex -> {
             legacyEndpointHits.incrementAndGet();

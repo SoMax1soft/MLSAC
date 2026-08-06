@@ -57,6 +57,7 @@ public final class ConfigSyncUtil {
                     "detection.models",
                     "remote-config.preset",
                     "vision.enabled",
+                    "anti_esp",
                     "alerts",
                     "violation",
                     "penalties",

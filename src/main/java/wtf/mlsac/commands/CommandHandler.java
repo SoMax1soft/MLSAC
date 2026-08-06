@@ -105,10 +105,10 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
         register("stop", Set.of(), false, this::handleStop);
 
         register("alerts", alertsOrAdmin, true, (sender, args) -> handleAlerts(sender));
-        register("monitor", alertsOrAdmin, true, (sender, args) -> handleMonitor(sender));
+        register("monitor", alertsOrAdmin, true, this::handleMonitor);
         register("suspects", alertsOrAdmin, true, (sender, args) -> handleSuspects(sender));
         register("vision", alertsOrAdmin, true, (sender, args) -> handleVision(sender));
-        register("prob", probOrAdmin, true, this::handleProb);
+        register("prob", probOrAdmin, true, this::handleDeprecatedProb);
         register("reload", reloadOrAdmin, false, (sender, args) -> handleReload(sender));
 
         register("reinstall", admin, false, (sender, args) -> handleReinstall(sender));
@@ -200,8 +200,30 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
         alertManager.toggleAlerts((Player) sender);
     }
 
-    private void handleMonitor(CommandSender sender) {
-        alertManager.toggleMonitor((Player) sender);
+    private void handleMonitor(CommandSender sender, String[] args) {
+        if (args.length >= 2 && args[1].equalsIgnoreCase("prob")) {
+            String[] probArgs = new String[args.length - 1];
+            probArgs[0] = "prob";
+            System.arraycopy(args, 2, probArgs, 1, args.length - 2);
+            handleProb(sender, probArgs);
+            return;
+        }
+
+        if (args.length >= 2 && args[1].equalsIgnoreCase("chat")) {
+            alertManager.toggleMonitor((Player) sender);
+            return;
+        }
+
+        if (args.length == 1) {
+            alertManager.toggleMonitor((Player) sender);
+            return;
+        }
+
+        sender.sendMessage(getPrefix() + ColorUtil.colorize("&fИспользование: &7/mlsac monitor <chat|prob> [игрок]"));
+    }
+
+    private void handleDeprecatedProb(CommandSender sender, String[] args) {
+        sender.sendMessage(getPrefix() + msg("prob-deprecated"));
     }
 
     private void handleProb(CommandSender sender, String[] args) {
@@ -625,7 +647,9 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
             completions.addAll(filterStartsWith(new ArrayList<>(subCommands.keySet()), args[0]));
         } else if (args.length == 2) {
             String subCommand = args[0].toLowerCase();
-            if (Arrays.asList("start", "stop", "prob", "punish", "profile").contains(subCommand)) {
+            if (subCommand.equals("monitor")) {
+                completions.addAll(filterStartsWith(Arrays.asList("chat", "prob"), args[1]));
+            } else if (Arrays.asList("start", "stop", "punish", "profile").contains(subCommand)) {
                 List<String> targets = new ArrayList<>(getOnlinePlayerNames());
                 if (subCommand.equals("stop"))
                     targets.add("all");
@@ -637,7 +661,9 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
             }
         } else if (args.length == 3) {
             String subCommand = args[0].toLowerCase();
-            if (subCommand.equalsIgnoreCase("falsepositive") && args[1].equalsIgnoreCase("restore")) {
+            if (subCommand.equals("monitor") && args[1].equalsIgnoreCase("prob")) {
+                completions.addAll(filterStartsWith(getOnlinePlayerNames(), args[2]));
+            } else if (subCommand.equalsIgnoreCase("falsepositive") && args[1].equalsIgnoreCase("restore")) {
                 completions.addAll(filterStartsWith(getOnlinePlayerNames(), args[2]));
             } else if (subCommand.equals("punish")) {
                 completions.addAll(filterStartsWith(List.of("confirm"), args[2]));
@@ -724,14 +750,20 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
         // Remote config preset — the usual reason a change made on the site is not live yet.
         wtf.mlsac.config.Config pluginConfig = plugin.getPluginConfig();
         if (pluginConfig != null) {
-            if (!pluginConfig.isRemoteConfigEnabled()) {
-                sender.sendMessage(ColorUtil.colorize("&7Config preset: &8none (local config.yml)"));
-            } else if (pluginConfig.isRemotePresetApplied()) {
-                sender.sendMessage(ColorUtil.colorize(
-                        "&7Config preset: &a" + pluginConfig.getRemotePresetName() + " &7(applied)"));
+            String configuredPreset = pluginConfig.getRemotePresetName(); // empty = auto mode
+            if (pluginConfig.isRemotePresetApplied()) {
+                String applied = configuredPreset;
+                wtf.mlsac.config.RemoteConfigManager rcm = plugin.getRemoteConfigManager();
+                if ((applied == null || applied.isEmpty()) && rcm != null && rcm.getAppliedSnapshot() != null) {
+                    applied = rcm.getAppliedSnapshot().getPreset();
+                }
+                sender.sendMessage(ColorUtil.colorize("&7Config preset: &a" + applied + " &7(applied)"));
+            } else if (!configuredPreset.isEmpty()) {
+                sender.sendMessage(ColorUtil.colorize("&7Config preset: &e" + configuredPreset
+                        + " &7(not loaded - check the preset name on the site)"));
             } else {
-                sender.sendMessage(ColorUtil.colorize("&7Config preset: &e" + pluginConfig.getRemotePresetName()
-                        + " &7(not loaded - check test mode on the site)"));
+                sender.sendMessage(ColorUtil.colorize(
+                        "&7Config preset: &8auto &7(no single preset on the account - using local config.yml)"));
             }
         }
 

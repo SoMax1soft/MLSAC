@@ -99,6 +99,24 @@ public class Config {
     private final String remotePresetName;
     private final int remoteRefreshMinutes;
     private final boolean remotePresetApplied;
+    private final boolean antiEspEnabled;
+    private final double antiEspMaxDistance;
+    private final double antiEspProximityDistance;
+    private final int antiEspHideDelayTicks;
+    private final int antiEspUpdateIntervalTicks;
+    private final boolean antiEspHideSounds;
+    private final boolean antiEspHideGlowing;
+    private final boolean antiEspVerboseDebug;
+
+    public static final boolean DEFAULT_ANTI_ESP_ENABLED = true;
+    public static final double DEFAULT_ANTI_ESP_MAX_DISTANCE = 48.0;
+    public static final double DEFAULT_ANTI_ESP_PROXIMITY_DISTANCE = 3.0;
+    public static final int DEFAULT_ANTI_ESP_HIDE_DELAY_TICKS = 20;
+    public static final int DEFAULT_ANTI_ESP_UPDATE_INTERVAL_TICKS = 1;
+    public static final boolean DEFAULT_ANTI_ESP_HIDE_SOUNDS = true;
+    public static final boolean DEFAULT_ANTI_ESP_HIDE_GLOWING = true;
+    public static final boolean DEFAULT_ANTI_ESP_VERBOSE_DEBUG = false;
+
     public static final boolean DEFAULT_DEBUG = false;
     public static final String DEFAULT_OUTPUT_DIRECTORY = "plugins/MLSAC/data";
     public static final boolean DEFAULT_AI_ENABLED = false;
@@ -223,6 +241,14 @@ public class Config {
         this.remotePresetName = DEFAULT_REMOTE_PRESET;
         this.remoteRefreshMinutes = DEFAULT_REMOTE_REFRESH_MINUTES;
         this.remotePresetApplied = false;
+        this.antiEspEnabled = DEFAULT_ANTI_ESP_ENABLED;
+        this.antiEspMaxDistance = DEFAULT_ANTI_ESP_MAX_DISTANCE;
+        this.antiEspProximityDistance = DEFAULT_ANTI_ESP_PROXIMITY_DISTANCE;
+        this.antiEspHideDelayTicks = DEFAULT_ANTI_ESP_HIDE_DELAY_TICKS;
+        this.antiEspUpdateIntervalTicks = DEFAULT_ANTI_ESP_UPDATE_INTERVAL_TICKS;
+        this.antiEspHideSounds = DEFAULT_ANTI_ESP_HIDE_SOUNDS;
+        this.antiEspHideGlowing = DEFAULT_ANTI_ESP_HIDE_GLOWING;
+        this.antiEspVerboseDebug = DEFAULT_ANTI_ESP_VERBOSE_DEBUG;
     }
 
     /**
@@ -385,6 +411,15 @@ public class Config {
                 DEFAULT_FOLIA_ENTITY_SCHEDULER_ENABLED);
         this.foliaRegionSchedulerEnabled = config.getBoolean("folia.region-scheduler.enabled",
                 DEFAULT_FOLIA_REGION_SCHEDULER_ENABLED);
+
+        this.antiEspEnabled = config.getBoolean("anti_esp.enabled", DEFAULT_ANTI_ESP_ENABLED);
+        this.antiEspMaxDistance = config.getDouble("anti_esp.max_distance", DEFAULT_ANTI_ESP_MAX_DISTANCE);
+        this.antiEspProximityDistance = config.getDouble("anti_esp.proximity_distance", DEFAULT_ANTI_ESP_PROXIMITY_DISTANCE);
+        this.antiEspHideDelayTicks = config.getInt("anti_esp.hide_delay_ticks", DEFAULT_ANTI_ESP_HIDE_DELAY_TICKS);
+        this.antiEspUpdateIntervalTicks = config.getInt("anti_esp.update_interval_ticks", DEFAULT_ANTI_ESP_UPDATE_INTERVAL_TICKS);
+        this.antiEspHideSounds = config.getBoolean("anti_esp.hide_sounds", DEFAULT_ANTI_ESP_HIDE_SOUNDS);
+        this.antiEspHideGlowing = config.getBoolean("anti_esp.hide_glowing", DEFAULT_ANTI_ESP_HIDE_GLOWING);
+        this.antiEspVerboseDebug = config.getBoolean("anti_esp.verbose_debug", DEFAULT_ANTI_ESP_VERBOSE_DEBUG);
 
         this.modelNames = new HashMap<>();
         this.modelOnlyAlert = new HashMap<>();
@@ -852,6 +887,38 @@ public class Config {
     /** True when the values above came from an API preset rather than the local layers. */
     public boolean isRemotePresetApplied() {
         return remotePresetApplied;
+    }
+
+    public boolean isAntiEspEnabled() {
+        return antiEspEnabled;
+    }
+
+    public double getAntiEspMaxDistance() {
+        return antiEspMaxDistance;
+    }
+
+    public double getAntiEspProximityDistance() {
+        return antiEspProximityDistance;
+    }
+
+    public int getAntiEspHideDelayTicks() {
+        return antiEspHideDelayTicks;
+    }
+
+    public int getAntiEspUpdateIntervalTicks() {
+        return antiEspUpdateIntervalTicks;
+    }
+
+    public boolean isAntiEspHideSounds() {
+        return antiEspHideSounds;
+    }
+
+    public boolean isAntiEspHideGlowing() {
+        return antiEspHideGlowing;
+    }
+
+    public boolean isAntiEspVerboseDebug() {
+        return antiEspVerboseDebug;
     }
 
     public static final class DamageReductionStage {

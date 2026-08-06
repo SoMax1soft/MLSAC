@@ -26,6 +26,9 @@ import wtf.mlsac.Main;
 import wtf.mlsac.scheduler.ScheduledTask;
 import wtf.mlsac.scheduler.SchedulerManager;
 
+import java.util.Arrays;
+import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
 
@@ -41,6 +44,8 @@ public final class RemoteConfigManager {
     private static final long TICKS_PER_MINUTE = 1200L;
     /** Lets the server finish starting before the first fetch. */
     private static final long INITIAL_DELAY_TICKS = 40L;
+    /** Explicit opt-out values for {@code remote-config.preset} — force local config only. */
+    private static final List<String> DISABLE_SENTINELS = Arrays.asList("none", "off", "local", "disabled");
 
     private final Main plugin;
     private final Logger logger;
@@ -65,9 +70,8 @@ public final class RemoteConfigManager {
 
     public void start() {
         Config config = plugin.getPluginConfig();
-        if (!config.isRemoteConfigEnabled()) {
-            logger.info("[RemoteConfig] No preset selected (remote-config.preset is empty)"
-                    + " - using local configuration");
+        if (isDisabled(config)) {
+            logger.info("[RemoteConfig] Disabled (remote-config.preset: none) - using local configuration");
             return;
         }
         if (!config.isAiEnabled()) {
@@ -76,10 +80,25 @@ public final class RemoteConfigManager {
         }
 
         long periodTicks = config.getRemoteRefreshMinutes() * TICKS_PER_MINUTE;
-        logger.info("[RemoteConfig] Preset '" + config.getRemotePresetName() + "' will be refreshed every "
+        logger.info("[RemoteConfig] Preset " + describePreset(config) + " will be refreshed every "
                 + config.getRemoteRefreshMinutes() + " min");
         this.task = SchedulerManager.getAdapter().runAsyncRepeating(this::refresh,
                 INITIAL_DELAY_TICKS, periodTicks);
+    }
+
+    /**
+     * Auto mode is the default (empty {@code remote-config.preset}): the account's single preset is
+     * resolved by the backend, so a dashboard config applies without editing config.yml. Only the
+     * explicit sentinels turn it off entirely.
+     */
+    private boolean isDisabled(Config config) {
+        return DISABLE_SENTINELS.contains(config.getRemotePresetName().toLowerCase(Locale.ROOT));
+    }
+
+    private String describePreset(Config config) {
+        return config.getRemotePresetName().isEmpty()
+                ? "auto (account's single preset)"
+                : "'" + config.getRemotePresetName() + "'";
     }
 
     public void stop() {
@@ -106,7 +125,7 @@ public final class RemoteConfigManager {
         }
         try {
             Config config = plugin.getPluginConfig();
-            if (config == null || !config.isRemoteConfigEnabled()) {
+            if (config == null || isDisabled(config)) {
                 return;
             }
 
@@ -139,10 +158,13 @@ public final class RemoteConfigManager {
         appliedSnapshot = snapshot.hasConfig() ? snapshot : null;
 
         if (snapshot.hasConfig()) {
-            logger.info("[RemoteConfig] Applying preset '" + presetName + "' (" + hash + ")");
-        } else {
+            // In auto mode presetName is empty; the backend reports the preset it resolved.
+            String resolved = presetName.isEmpty() && snapshot.getPreset() != null && !snapshot.getPreset().isEmpty()
+                    ? snapshot.getPreset() : presetName;
+            logger.info("[RemoteConfig] Applying preset '" + resolved + "' (" + hash + ")");
+        } else if (!presetName.isEmpty()) {
             logger.info("[RemoteConfig] Preset '" + presetName + "' is unavailable"
-                    + " (test mode off or preset deleted) - falling back to local configuration");
+                    + " (preset not found or invalid) - falling back to local configuration");
         }
         plugin.applyRemoteConfig(appliedSnapshot);
     }

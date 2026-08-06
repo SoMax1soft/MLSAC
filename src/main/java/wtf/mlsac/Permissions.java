@@ -37,4 +37,5 @@ public final class Permissions {
     public static final String RELOAD = "mlsac.reload";
     public static final String ADMIN = "mlsac.admin";
     public static final String COLLECT = "mlsac.collect";
+    public static final String ANTI_ESP_BYPASS = "mlsac.antiesp.bypass";
 }

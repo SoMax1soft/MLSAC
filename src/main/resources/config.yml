@@ -75,7 +75,11 @@ detection:
 # If test mode is off, the preset does not exist, or the API is unreachable, the plugin keeps
 # using its built-in defaults (identical to what this file used to ship), so nothing breaks.
 remote-config:
-  # Name of the preset to load. Leave empty to always use the built-in defaults.
+  # Which dashboard preset to load.
+  #   ""      -> AUTO: if your account has exactly one preset on the site, it is applied
+  #              automatically (no need to type its name here). With several presets, name one below.
+  #   <name>  -> always load exactly this preset.
+  #   "none"  -> disable: always use the local config.yml only.
   preset: ""
 
   # How often to re-check the site for changes, in minutes (1-1440).
@@ -131,3 +135,33 @@ folia:
   region-scheduler: # Do not change!
     enabled: true
 
+# ┌───────────────────────────────────────────────────────────────────────────────┐
+# │                           ANTI-ESP SETTINGS                                   │
+# └───────────────────────────────────────────────────────────────────────────────┘
+# Packet-level player occlusion engine (Anti-Wallhack / Anti-ESP).
+# Hides players completely behind solid blocks to prevent all forms of client ESP.
+anti_esp:
+  # Enable Anti-ESP packet filtering
+  enabled: true
+
+  # Maximum distance (blocks) within which occlusion raytracing is performed
+  max_distance: 48.0
+
+  # Safe proximity radius (blocks) where players are always visible to prevent peeking latency
+  proximity_distance: 3.0
+
+  # Delay (in server ticks, 20 ticks = 1 second) before hiding a player who just stepped behind a wall.
+  # Provides smooth visual transitions, prevents flickering around wall corners, and eliminates pop-in delay.
+  hide_delay_ticks: 5
+
+  # Interval (in server ticks) between occlusion recalculation
+  update_interval_ticks: 1
+
+  # Hide sound effects originating from hidden players
+  hide_sounds: true
+
+  # Strip glowing outline metadata bit for hidden players
+  hide_glowing: true
+
+  # Enable detailed debug log output in server console for Anti-ESP packet filtering & raycasting
+  verbose_debug: true
