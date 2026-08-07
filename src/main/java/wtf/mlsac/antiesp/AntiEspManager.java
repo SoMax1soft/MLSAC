@@ -7,6 +7,12 @@
 package wtf.mlsac.antiesp;
 
 import com.github.retrooper.packetevents.PacketEvents;
+import com.github.retrooper.packetevents.protocol.entity.type.EntityTypes;
+import com.github.retrooper.packetevents.util.Vector3d;
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerDestroyEntities;
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityHeadLook;
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityTeleport;
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerSpawnEntity;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
@@ -25,6 +31,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * Manager for Anti-ESP engine.
  * Manages periodic occlusion checking, visibility state maps,
  * and dispatching destroy/spawn packets when players transition behind/out of walls.
+ *
+ * Uses pure PacketEvents packets (DestroyEntities/SpawnEntity) to hide/reveal players
+ * without touching the TAB list. This works correctly on all server versions (1.16.5+).
  */
 public class AntiEspManager implements Listener {
     private final JavaPlugin plugin;
@@ -114,7 +123,7 @@ public class AntiEspManager implements Listener {
                 if (!viewer.getWorld().equals(target.getWorld())) {
                     if (currentlyHidden) {
                         viewerHiddenSet.remove(targetId);
-                        revealPlayerToViewer(viewer, target);
+                        // No need to send spawn packet — different world, client doesn't track this entity
                     }
                     continue;
                 }
@@ -180,41 +189,79 @@ public class AntiEspManager implements Listener {
         return false;
     }
 
+    /**
+     * Hide player from viewer using PacketEvents DestroyEntities packet.
+     * This only removes the 3D entity from the viewer's client — it does NOT
+     * send PLAYER_INFO_REMOVE, so the player stays in the TAB list.
+     */
     private void hidePlayerFromViewer(Player viewer, Player target) {
         if (viewer == null || !viewer.isOnline() || target == null) {
             return;
         }
         try {
-            // Paper API: hideEntity hides 3D entity model without removing player from TAB list
-            viewer.hideEntity(plugin, target);
-        } catch (NoSuchMethodError e) {
-            try {
-                viewer.hidePlayer(plugin, target);
-            } catch (Exception ignored) {
+            PacketEvents.getAPI().getPlayerManager().sendPacket(viewer,
+                    new WrapperPlayServerDestroyEntities(target.getEntityId()));
+        } catch (Exception e) {
+            if (config.isDebug()) {
+                plugin.getLogger().warning("[Anti-ESP] Failed to send DestroyEntities packet: " + e.getMessage());
             }
-        } catch (Exception ignored) {
         }
     }
 
+    /**
+     * Reveal player to viewer using PacketEvents SpawnEntity + EntityTeleport + EntityHeadLook packets.
+     * This re-spawns the 3D entity on the viewer's client without touching the TAB list.
+     * The AntiEspPacketListener will stop blocking entity packets for this target once
+     * they are removed from the hidden set, allowing the server's natural entity tracking
+     * to resume sending metadata, equipment, and movement packets.
+     */
     private void revealPlayerToViewer(Player viewer, Player target) {
         if (viewer == null || !viewer.isOnline() || target == null || !target.isOnline()) {
             return;
         }
-        try {
-            // Paper API: showEntity reveals 3D entity model without touching TAB list
-            viewer.showEntity(plugin, target);
-        } catch (NoSuchMethodError e) {
-            try {
-                viewer.showPlayer(plugin, target);
-            } catch (Exception ignored) {
-            }
-        } catch (Exception ignored) {
+        if (!viewer.getWorld().equals(target.getWorld())) {
+            return;
         }
         try {
-            if (!viewer.canSee(target)) {
-                viewer.showPlayer(plugin, target);
+            Location loc = target.getLocation();
+            int entityId = target.getEntityId();
+            UUID targetUuid = target.getUniqueId();
+
+            // Send SpawnEntity packet to re-create the player entity on the client
+            WrapperPlayServerSpawnEntity spawnPacket = new WrapperPlayServerSpawnEntity(
+                    entityId,
+                    Optional.of(targetUuid),
+                    EntityTypes.PLAYER,
+                    new Vector3d(loc.getX(), loc.getY(), loc.getZ()),
+                    loc.getPitch(),
+                    loc.getYaw(),
+                    loc.getYaw(), // headYaw
+                    0,
+                    Optional.of(new Vector3d(0, 0, 0))
+            );
+            PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, spawnPacket);
+
+            // Send EntityTeleport to ensure correct position
+            WrapperPlayServerEntityTeleport teleportPacket = new WrapperPlayServerEntityTeleport(
+                    entityId,
+                    new Vector3d(loc.getX(), loc.getY(), loc.getZ()),
+                    loc.getYaw(),
+                    loc.getPitch(),
+                    target.isOnGround()
+            );
+            PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, teleportPacket);
+
+            // Send EntityHeadLook for correct head rotation
+            WrapperPlayServerEntityHeadLook headLookPacket = new WrapperPlayServerEntityHeadLook(
+                    entityId,
+                    loc.getYaw()
+            );
+            PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, headLookPacket);
+
+        } catch (Exception e) {
+            if (config.isDebug()) {
+                plugin.getLogger().warning("[Anti-ESP] Failed to send spawn packets for reveal: " + e.getMessage());
             }
-        } catch (Exception ignored) {
         }
     }
 
@@ -244,6 +291,7 @@ public class AntiEspManager implements Listener {
     public void onPlayerQuit(PlayerQuitEvent event) {
         UUID uuid = event.getPlayer().getUniqueId();
         hiddenEntities.remove(uuid);
+        lastVisibleTimestamps.remove(uuid);
 
         int entityId = event.getPlayer().getEntityId();
         for (Set<Integer> set : hiddenEntities.values()) {
@@ -256,25 +304,16 @@ public class AntiEspManager implements Listener {
         Player player = event.getPlayer();
         UUID uuid = player.getUniqueId();
 
-        // 1. Reveal all hidden players for this viewer who just changed world
-        Set<Integer> hidden = hiddenEntities.remove(uuid);
-        if (hidden != null && !hidden.isEmpty()) {
-            for (Player other : Bukkit.getOnlinePlayers()) {
-                if (hidden.contains(other.getEntityId())) {
-                    revealPlayerToViewer(player, other);
-                }
-            }
-        }
+        // 1. Clear all hidden state for this viewer who just changed world
+        //    (client already lost all entities from old world, no packets needed)
+        hiddenEntities.remove(uuid);
+        lastVisibleTimestamps.remove(uuid);
 
-        // 2. Reveal this player to any viewers who had hidden them
+        // 2. Remove this player from other viewers' hidden sets
+        //    (they were in the old world, client already dropped the entity)
         int entityId = player.getEntityId();
-        for (Map.Entry<UUID, Set<Integer>> entry : hiddenEntities.entrySet()) {
-            if (entry.getValue().remove(entityId)) {
-                Player viewer = Bukkit.getPlayer(entry.getKey());
-                if (viewer != null && viewer.isOnline()) {
-                    revealPlayerToViewer(viewer, player);
-                }
-            }
+        for (Set<Integer> set : hiddenEntities.values()) {
+            set.remove(entityId);
         }
     }
 
