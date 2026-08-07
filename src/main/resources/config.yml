@@ -142,7 +142,7 @@ folia:
 # Hides players completely behind solid blocks to prevent all forms of client ESP.
 anti_esp:
   # Enable Anti-ESP packet filtering
-  enabled: true
+  enabled: false
 
   # Maximum distance (blocks) within which occlusion raytracing is performed
   max_distance: 48.0
@@ -164,4 +164,4 @@ anti_esp:
   hide_glowing: true
 
   # Enable detailed debug log output in server console for Anti-ESP packet filtering & raycasting
-  verbose_debug: true
+  verbose_debug: false

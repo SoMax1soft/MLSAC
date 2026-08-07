@@ -12,18 +12,8 @@ import com.github.retrooper.packetevents.event.PacketSendEvent;
 import com.github.retrooper.packetevents.protocol.packettype.PacketType;
 import com.github.retrooper.packetevents.protocol.packettype.PacketTypeCommon;
 import com.github.retrooper.packetevents.wrapper.play.server.*;
-import com.github.retrooper.packetevents.protocol.item.ItemStack;
-import com.github.retrooper.packetevents.protocol.item.type.ItemType;
-import com.github.retrooper.packetevents.protocol.item.type.ItemTypes;
-import com.github.retrooper.packetevents.protocol.nbt.*;
-import com.github.retrooper.packetevents.protocol.player.Equipment;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
-import wtf.mlsac.Permissions;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
 
 /**
  * PacketEvents listener for Anti-ESP.
@@ -70,31 +60,6 @@ public class AntiEspPacketListener extends PacketListenerAbstract {
                 return;
             }
             return;
-        }
-
-        // TAB list protection: cancel PLAYER_INFO_REMOVE packets sent for hidden players so they stay in TAB
-        if (packetType == PacketType.Play.Server.PLAYER_INFO_REMOVE) {
-            try {
-                WrapperPlayServerPlayerInfoRemove wrapper = new WrapperPlayServerPlayerInfoRemove(event);
-                List<UUID> profileIds = wrapper.getProfileIds();
-                if (profileIds != null && !profileIds.isEmpty()) {
-                    List<UUID> remaining = new ArrayList<>(profileIds.size());
-                    for (UUID uuid : profileIds) {
-                        Player target = org.bukkit.Bukkit.getPlayer(uuid);
-                        if (target != null && antiEspManager.isEntityHiddenFrom(viewer, target.getEntityId())) {
-                            // Target is occluded by Anti-ESP, keep them in TAB list!
-                            continue;
-                        }
-                        remaining.add(uuid);
-                    }
-                    if (remaining.isEmpty()) {
-                        event.setCancelled(true);
-                    } else if (remaining.size() < profileIds.size()) {
-                        wrapper.setProfileIds(remaining);
-                    }
-                }
-            } catch (Exception ignored) {
-            }
         }
 
         // Sound hiding for hidden players

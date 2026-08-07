@@ -7,16 +7,12 @@
 package wtf.mlsac.antiesp;
 
 import com.github.retrooper.packetevents.PacketEvents;
-import com.github.retrooper.packetevents.util.Vector3d;
-import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerDestroyEntities;
-import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityHeadLook;
-import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEntityTeleport;
-import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerSpawnPlayer;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -112,12 +108,17 @@ public class AntiEspManager implements Listener {
                     continue;
                 }
 
+                int targetId = target.getEntityId();
+                boolean currentlyHidden = viewerHiddenSet.contains(targetId);
+
                 if (!viewer.getWorld().equals(target.getWorld())) {
+                    if (currentlyHidden) {
+                        viewerHiddenSet.remove(targetId);
+                        revealPlayerToViewer(viewer, target);
+                    }
                     continue;
                 }
 
-                int targetId = target.getEntityId();
-                boolean currentlyHidden = viewerHiddenSet.contains(targetId);
                 boolean visibleNow = OcclusionChecker.isVisible(viewer, target, maxDist, proximityDist);
 
                 boolean verbose = config.isDebug() || config.isAntiEspVerboseDebug();
@@ -184,7 +185,13 @@ public class AntiEspManager implements Listener {
             return;
         }
         try {
-            viewer.hidePlayer(plugin, target);
+            // Paper API: hideEntity hides 3D entity model without removing player from TAB list
+            viewer.hideEntity(plugin, target);
+        } catch (NoSuchMethodError e) {
+            try {
+                viewer.hidePlayer(plugin, target);
+            } catch (Exception ignored) {
+            }
         } catch (Exception ignored) {
         }
     }
@@ -194,7 +201,19 @@ public class AntiEspManager implements Listener {
             return;
         }
         try {
-            viewer.showPlayer(plugin, target);
+            // Paper API: showEntity reveals 3D entity model without touching TAB list
+            viewer.showEntity(plugin, target);
+        } catch (NoSuchMethodError e) {
+            try {
+                viewer.showPlayer(plugin, target);
+            } catch (Exception ignored) {
+            }
+        } catch (Exception ignored) {
+        }
+        try {
+            if (!viewer.canSee(target)) {
+                viewer.showPlayer(plugin, target);
+            }
         } catch (Exception ignored) {
         }
     }
@@ -229,6 +248,33 @@ public class AntiEspManager implements Listener {
         int entityId = event.getPlayer().getEntityId();
         for (Set<Integer> set : hiddenEntities.values()) {
             set.remove(entityId);
+        }
+    }
+
+    @EventHandler
+    public void onPlayerChangedWorld(PlayerChangedWorldEvent event) {
+        Player player = event.getPlayer();
+        UUID uuid = player.getUniqueId();
+
+        // 1. Reveal all hidden players for this viewer who just changed world
+        Set<Integer> hidden = hiddenEntities.remove(uuid);
+        if (hidden != null && !hidden.isEmpty()) {
+            for (Player other : Bukkit.getOnlinePlayers()) {
+                if (hidden.contains(other.getEntityId())) {
+                    revealPlayerToViewer(player, other);
+                }
+            }
+        }
+
+        // 2. Reveal this player to any viewers who had hidden them
+        int entityId = player.getEntityId();
+        for (Map.Entry<UUID, Set<Integer>> entry : hiddenEntities.entrySet()) {
+            if (entry.getValue().remove(entityId)) {
+                Player viewer = Bukkit.getPlayer(entry.getKey());
+                if (viewer != null && viewer.isOnline()) {
+                    revealPlayerToViewer(viewer, player);
+                }
+            }
         }
     }
 
