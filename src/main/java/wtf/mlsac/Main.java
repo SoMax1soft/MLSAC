@@ -85,6 +85,7 @@ public final class Main extends JavaPlugin {
     private wtf.mlsac.stats.DailyStats dailyStats;
     private wtf.mlsac.penalty.engine.AnimationManager animationManager;
     private wtf.mlsac.report.ReportManager reportManager;
+    private wtf.mlsac.report.AdminReportModService adminReportModService;
     private RemoteConfigManager remoteConfigManager;
     private wtf.mlsac.vision.VisionEventSender visionEventSender;
     private wtf.mlsac.vision.VisionListener visionListener;
@@ -125,6 +126,10 @@ public final class Main extends JavaPlugin {
             e.printStackTrace();
         }
         VersionAdapter.get().logCompatibilityInfo();
+        // Must come first. The schema migration below regenerates config.yml, and syncing would
+        // create the module files behind our back — either one happening first would strip the
+        // legacy sections before they could be moved into modules/.
+        wtf.mlsac.config.ModuleLayout.install(this);
         ConfigSyncUtil.migrateConfigSchemaIfNeeded(this);
         ConfigSyncUtil.wipeMessagesIfAnyKeyMissing(this);
         ConfigSyncUtil.syncAllPluginConfigs(this);
@@ -198,10 +203,11 @@ public final class Main extends JavaPlugin {
             command.setTabCompleter(commandHandler);
         }
 
-        this.reportManager = new wtf.mlsac.report.ReportManager(this);
-        getServer().getPluginManager().registerEvents(reportManager, this);
-        getServer().getPluginManager().registerEvents(new wtf.mlsac.report.AdminReportModService(this), this);
+        // modules.yml -> reports. Off means nothing is built: no listeners, no queue, and /report
+        // only answers that it is disabled. getReportManager() stays null, which every caller of it
+        // already tolerates.
         wtf.mlsac.commands.ReportCommand reportCommand = new wtf.mlsac.commands.ReportCommand(this);
+        setupReports();
         PluginCommand reportPluginCommand = getCommand("report");
         if (reportPluginCommand != null) {
             reportPluginCommand.setExecutor(reportCommand);
@@ -249,6 +255,12 @@ public final class Main extends JavaPlugin {
         }
         if (reportManager != null) {
             reportManager.cleanup();
+            org.bukkit.event.HandlerList.unregisterAll(reportManager);
+            reportManager = null;
+        }
+        if (adminReportModService != null) {
+            org.bukkit.event.HandlerList.unregisterAll(adminReportModService);
+            adminReportModService = null;
         }
         if (updateChecker != null) {
             updateChecker.stop();
@@ -361,6 +373,7 @@ public final class Main extends JavaPlugin {
                 antiEspManager = new wtf.mlsac.antiesp.AntiEspManager(this, config);
                 antiEspManager.start();
                 setupVision();
+                setupReports();
                 getLogger().info("Configuration reloaded!");
             } catch (Exception e) {
                 getLogger().severe("Failed to reload configuration: " + e.getMessage());
@@ -439,6 +452,38 @@ public final class Main extends JavaPlugin {
         if (visionWatchList == null) {
             visionWatchList = new wtf.mlsac.vision.VisionWatchList(this);
             visionWatchList.start();
+        }
+    }
+
+    /**
+     * Starts, updates or tears down the report manager and admin moderation listener to match the current config.
+     *
+     * <p>Safe to call repeatedly — it is invoked on enable and again after every reload, since
+     * {@code reports} can be flipped at runtime in {@code modules.yml}.
+     */
+    private void setupReports() {
+        if (!config.isReportsEnabled()) {
+            if (reportManager != null) {
+                reportManager.cleanup();
+                org.bukkit.event.HandlerList.unregisterAll(reportManager);
+                reportManager = null;
+            }
+            if (adminReportModService != null) {
+                org.bukkit.event.HandlerList.unregisterAll(adminReportModService);
+                adminReportModService = null;
+            }
+            getLogger().info("Reports: DISABLED (modules.yml)");
+            return;
+        }
+
+        if (reportManager == null) {
+            this.reportManager = new wtf.mlsac.report.ReportManager(this);
+            getServer().getPluginManager().registerEvents(reportManager, this);
+        }
+        if (adminReportModService == null) {
+            this.adminReportModService = new wtf.mlsac.report.AdminReportModService(this);
+            getServer().getPluginManager().registerEvents(adminReportModService, this);
+            getLogger().info("Reports: ENABLED (modules.yml)");
         }
     }
 

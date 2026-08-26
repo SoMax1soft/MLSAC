@@ -34,6 +34,9 @@ class OcclusionCheckerTest {
         mockWorld = Mockito.mock(World.class);
         worldBlocks = new HashMap<>();
 
+        // The tracer refuses to touch unloaded chunks, so a test world has to claim it is loaded.
+        when(mockWorld.isChunkLoaded(anyInt(), anyInt())).thenReturn(true);
+
         when(mockWorld.getBlockAt(anyInt(), anyInt(), anyInt())).thenAnswer(invocation -> {
             int x = invocation.getArgument(0);
             int y = invocation.getArgument(1);
@@ -94,10 +97,7 @@ class OcclusionCheckerTest {
 
         // Viewer below at (0, 62, 0), looking up
         // Target standing on top of floor at (0, 65, 0)
-        Location viewerLoc = new Location(mockWorld, 0, 62, 0);
-        Location targetLoc = new Location(mockWorld, 0, 65, 0);
-
-        boolean unobstructed = OcclusionChecker.isRayUnobstructed(mockWorld, 0, 63.62, 0, 0, 65.2, 0, viewerLoc, targetLoc);
+        boolean unobstructed = OcclusionChecker.isRayUnobstructed(mockWorld, 0, 63.62, 0, 0, 65.2, 0);
         assertFalse(unobstructed, "Solid floor block at Y=64 must obstruct rays from viewer below");
     }
 
@@ -260,5 +260,143 @@ class OcclusionCheckerTest {
 
         boolean visible = OcclusionChecker.isVisible(viewer, target, 48.0, 1.0);
         assertFalse(visible, "Target standing adjacent to wall must be occluded from viewer on opposite side");
+    }
+
+    @Test
+    @DisplayName("Unloaded chunks are never read and the ray reports clear")
+    void testUnloadedChunkIsNotRead() {
+        worldBlocks.put("5,64,0", Material.STONE);
+        when(mockWorld.isChunkLoaded(anyInt(), anyInt())).thenReturn(false);
+
+        boolean unobstructed = OcclusionChecker.isRayUnobstructed(mockWorld, 0, 64, 0, 10, 64, 0);
+
+        assertTrue(unobstructed, "A ray entering an unloaded chunk must fail open instead of hiding the player");
+        Mockito.verify(mockWorld, Mockito.never()).getBlockAt(anyInt(), anyInt(), anyInt());
+    }
+
+    @Test
+    @DisplayName("A block a ray only clips the corner of still occludes")
+    void testThinWallIsNotTunneledThrough() {
+        // A single block the ray enters and leaves within a fraction of a voxel. A step-based
+        // tracer can sample either side of it and miss; a voxel walk cannot.
+        worldBlocks.put("5,64,3", Material.STONE);
+
+        boolean unobstructed = OcclusionChecker.isRayUnobstructed(mockWorld, 0.5, 64.5, 0.5, 10.5, 64.5, 6.5);
+        assertFalse(unobstructed, "Voxel traversal must visit every block the segment passes through");
+    }
+
+    @Test
+    @DisplayName("Ray never reads a block outside the segment")
+    void testRayStopsAtTheTarget() {
+        worldBlocks.put("12,64,0", Material.STONE);
+
+        boolean unobstructed = OcclusionChecker.isRayUnobstructed(mockWorld, 0, 64, 0, 10, 64, 0);
+
+        assertTrue(unobstructed, "A block past the target must not occlude");
+        Mockito.verify(mockWorld, Mockito.never()).getBlockAt(Mockito.eq(12), anyInt(), anyInt());
+    }
+
+    @Test
+    @DisplayName("Viewer clipped inside a block still sees the world")
+    void testViewerInsideBlockIsNotBlinded() {
+        worldBlocks.put("0,64,0", Material.STONE);
+
+        boolean unobstructed = OcclusionChecker.isRayUnobstructed(mockWorld, 0.5, 64.5, 0.5, 10.5, 64.5, 0.5);
+        assertTrue(unobstructed, "The eye's own voxel must not count as an occluder");
+    }
+
+    @Test
+    @DisplayName("Beyond max distance the target counts as not visible")
+    void testBeyondMaxDistance() {
+        Player viewer = Mockito.mock(Player.class);
+        Player target = Mockito.mock(Player.class);
+
+        when(viewer.getEntityId()).thenReturn(1);
+        when(target.getEntityId()).thenReturn(2);
+        when(viewer.isOnline()).thenReturn(true);
+        when(target.isOnline()).thenReturn(true);
+        when(viewer.getWorld()).thenReturn(mockWorld);
+        when(target.getWorld()).thenReturn(mockWorld);
+        when(viewer.getEyeLocation()).thenReturn(new Location(mockWorld, 0, 65.62, 0));
+        when(target.getLocation()).thenReturn(new Location(mockWorld, 200, 64, 0));
+
+        assertFalse(OcclusionChecker.isVisible(viewer, target, 48.0, 3.0),
+                "Targets past max_distance are outside the engine's range");
+    }
+
+    @Test
+    @DisplayName("Sample points cover the hitbox and honour the requested ray count")
+    void testSampleBuilder() {
+        double[] samples = new double[OcclusionChecker.MAX_SAMPLES * 3];
+
+        assertEquals(1, OcclusionChecker.buildSamples(0, 64, 0, false, 1, 0, 1, samples));
+        assertEquals(64.9, samples[1], 1.0E-9, "The first sample is the chest");
+
+        int count = OcclusionChecker.buildSamples(0, 64, 0, false, 1, 0, 9, samples);
+        assertEquals(9, count);
+
+        double lowest = Double.MAX_VALUE;
+        double highest = -Double.MAX_VALUE;
+        for (int i = 0; i < count; i++) {
+            lowest = Math.min(lowest, samples[i * 3 + 1]);
+            highest = Math.max(highest, samples[i * 3 + 1]);
+        }
+        assertTrue(lowest <= 64.2, "Samples must reach the feet");
+        assertTrue(highest >= 65.6, "Samples must reach the eyes");
+    }
+
+    @Test
+    @DisplayName("Sneaking lowers the eye sample")
+    void testSneakingLowersEyeSample() {
+        double[] standing = new double[OcclusionChecker.MAX_SAMPLES * 3];
+        double[] sneaking = new double[OcclusionChecker.MAX_SAMPLES * 3];
+
+        OcclusionChecker.buildSamples(0, 64, 0, false, 1, 0, 2, standing);
+        OcclusionChecker.buildSamples(0, 64, 0, true, 1, 0, 2, sneaking);
+
+        assertTrue(sneaking[4] < standing[4], "A sneaking player's head sample must sit lower");
+    }
+
+    @Test
+    @DisplayName("Preferred sample is retried first so a steady view costs one ray")
+    void testPreferredSampleIsTriedFirst() {
+        // Everything but the feet sample is walled off, so only index 3 can succeed.
+        for (int y = 64; y <= 67; y++) {
+            if (y != 64) {
+                worldBlocks.put("5," + y + ",0", Material.STONE);
+            }
+        }
+        double[] samples = new double[OcclusionChecker.MAX_SAMPLES * 3];
+        int count = OcclusionChecker.buildSamples(10, 64, 0, false, 1, 0, 5, samples);
+
+        int clear = OcclusionChecker.firstClearSample(mockWorld, 0, 64.2, 0, samples, count, 3,
+                OcclusionChecker.LOADED_ONLY);
+
+        assertEquals(3, clear, "The feet sample is the only one with a clear line");
+    }
+
+    @Test
+    @DisplayName("Allocation-free FOV check matches the Location based one")
+    void testFovVariantsAgree() {
+        Location eye = new Location(mockWorld, 0, 64, 0);
+        eye.setDirection(new Vector(1, 0, 0));
+        double cosHalfFov = Math.cos(Math.toRadians(120.0 / 2.0));
+
+        assertTrue(OcclusionChecker.isInFov(1, 0, 0, 10, 0, 0, cosHalfFov));
+        assertFalse(OcclusionChecker.isInFov(1, 0, 0, -10, 0, 0, cosHalfFov));
+        assertFalse(OcclusionChecker.isInFov(1, 0, 0, 1, 0, 10, cosHalfFov),
+                "A target well off to the side is outside a 120 degree cone");
+    }
+
+    @Test
+    @DisplayName("Glass and other see-through blocks never occlude")
+    void testTransparentMaterialsAreNotOccluding() {
+        assertFalse(OcclusionChecker.isOccluding(Material.AIR));
+        assertFalse(OcclusionChecker.isOccluding(Material.GLASS));
+        assertFalse(OcclusionChecker.isOccluding(Material.WATER));
+        assertTrue(OcclusionChecker.isOccluding(Material.STONE));
+        assertTrue(OcclusionChecker.isOccluding(Material.OAK_PLANKS));
+        // Repeated to exercise the memo path.
+        assertTrue(OcclusionChecker.isOccluding(Material.STONE));
     }
 }

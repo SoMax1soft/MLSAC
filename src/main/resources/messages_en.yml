@@ -14,6 +14,7 @@ interserver-alert-format: '&#81FFC2[{MODEL}]&f &#1E9F9A[Cross-server: &#19EEE6{S
 unknown-command: '&cUnknown command: &f{ARGS}'
 players-only: '&cThis command is for players only'
 no-permission: '&cYou don''t have permission'
+module-disabled: '&cThis feature is disabled on this server'
 player-not-found: '&cPlayer not found: &f{PLAYER}'
 config-reloaded: '&aConfiguration reloaded'
 

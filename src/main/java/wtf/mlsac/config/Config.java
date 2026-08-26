@@ -70,6 +70,8 @@ public class Config {
     private final String autostartLabel;
     private final String autostartComment;
     private final String serverAddress;
+    private final String reserveServerAddress;
+    private final boolean safeNameCheck;
     private final String serverIdentityName;
     private final String serverIdentityFamily;
     private final boolean interServerEnabled;
@@ -78,6 +80,10 @@ public class Config {
     private final double apiAlertEventThreshold;
     private final boolean updatesEnabled;
     private final boolean visionEnabled;
+    private final boolean reportsEnabled;
+    private final boolean menusEnabled;
+    private final int reportCooldownSeconds;
+    private final int visionRegionScanIntervalTicks;
     private final boolean vlDecayEnabled;
     private final int vlDecayIntervalSeconds;
     private final int vlDecayAmount;
@@ -104,6 +110,13 @@ public class Config {
     private final double antiEspProximityDistance;
     private final int antiEspHideDelayTicks;
     private final int antiEspUpdateIntervalTicks;
+    private final int antiEspBudgetMicros;
+    private final int antiEspCacheTicks;
+    private final double antiEspMoveThreshold;
+    private final int antiEspRayCount;
+    private final boolean antiEspFovEnabled;
+    private final double antiEspFovDegrees;
+    private final boolean antiEspRestoreMetadata;
     private final boolean antiEspHideSounds;
     private final boolean antiEspHideGlowing;
     private final boolean antiEspVerboseDebug;
@@ -112,7 +125,14 @@ public class Config {
     public static final double DEFAULT_ANTI_ESP_MAX_DISTANCE = 48.0;
     public static final double DEFAULT_ANTI_ESP_PROXIMITY_DISTANCE = 3.0;
     public static final int DEFAULT_ANTI_ESP_HIDE_DELAY_TICKS = 20;
-    public static final int DEFAULT_ANTI_ESP_UPDATE_INTERVAL_TICKS = 1;
+    public static final int DEFAULT_ANTI_ESP_UPDATE_INTERVAL_TICKS = 2;
+    public static final int DEFAULT_ANTI_ESP_BUDGET_MICROS = 2500;
+    public static final int DEFAULT_ANTI_ESP_CACHE_TICKS = 10;
+    public static final double DEFAULT_ANTI_ESP_MOVE_THRESHOLD = 0.30;
+    public static final int DEFAULT_ANTI_ESP_RAY_COUNT = 5;
+    public static final boolean DEFAULT_ANTI_ESP_FOV_ENABLED = false;
+    public static final double DEFAULT_ANTI_ESP_FOV_DEGREES = 140.0;
+    public static final boolean DEFAULT_ANTI_ESP_RESTORE_METADATA = true;
     public static final boolean DEFAULT_ANTI_ESP_HIDE_SOUNDS = true;
     public static final boolean DEFAULT_ANTI_ESP_HIDE_GLOWING = true;
     public static final boolean DEFAULT_ANTI_ESP_VERBOSE_DEBUG = false;
@@ -149,6 +169,8 @@ public class Config {
     public static final String DEFAULT_AUTOSTART_LABEL = "UNLABELED";
     public static final String DEFAULT_AUTOSTART_COMMENT = "";
     public static final String DEFAULT_SERVER_ADDRESS = "https://api.mlsac.net/api/v1";
+    public static final String DEFAULT_RESERVE_SERVER_ADDRESS = "https://ruapi.mlsac.net";
+    public static final boolean DEFAULT_SAFE_NAME_CHECK = true;
     public static final String DEFAULT_SERVER_IDENTITY_NAME = "default";
     public static final String DEFAULT_SERVER_IDENTITY_FAMILY = "default";
     public static final boolean DEFAULT_INTERSERVER_ENABLED = false;
@@ -156,6 +178,11 @@ public class Config {
     public static final boolean DEFAULT_API_EVENT_REPORTING_ENABLED = true;
     public static final double DEFAULT_API_ALERT_EVENT_THRESHOLD = 0.75;
     public static final boolean DEFAULT_UPDATES_ENABLED = true;
+    /** Region roster sweep period. 0 disables it; the default is every 5 minutes. */
+    public static final int DEFAULT_VISION_REGION_SCAN_MINUTES = 5;
+    public static final boolean DEFAULT_REPORTS_ENABLED = true;
+    public static final boolean DEFAULT_MENUS_ENABLED = true;
+    public static final int DEFAULT_REPORT_COOLDOWN_SECONDS = 30;
     public static final boolean DEFAULT_VISION_ENABLED = false;
     public static final boolean DEFAULT_VL_DECAY_ENABLED = true;
     public static final int DEFAULT_VL_DECAY_INTERVAL_SECONDS = 60;
@@ -212,6 +239,8 @@ public class Config {
         this.autostartLabel = DEFAULT_AUTOSTART_LABEL;
         this.autostartComment = DEFAULT_AUTOSTART_COMMENT;
         this.serverAddress = DEFAULT_SERVER_ADDRESS;
+        this.reserveServerAddress = DEFAULT_RESERVE_SERVER_ADDRESS;
+        this.safeNameCheck = DEFAULT_SAFE_NAME_CHECK;
         this.serverIdentityName = DEFAULT_SERVER_IDENTITY_NAME;
         this.serverIdentityFamily = DEFAULT_SERVER_IDENTITY_FAMILY;
         this.interServerEnabled = DEFAULT_INTERSERVER_ENABLED;
@@ -220,6 +249,10 @@ public class Config {
         this.apiAlertEventThreshold = DEFAULT_API_ALERT_EVENT_THRESHOLD;
         this.updatesEnabled = DEFAULT_UPDATES_ENABLED;
         this.visionEnabled = DEFAULT_VISION_ENABLED;
+        this.reportsEnabled = DEFAULT_REPORTS_ENABLED;
+        this.menusEnabled = DEFAULT_MENUS_ENABLED;
+        this.reportCooldownSeconds = DEFAULT_REPORT_COOLDOWN_SECONDS;
+        this.visionRegionScanIntervalTicks = DEFAULT_VISION_REGION_SCAN_MINUTES * 60 * 20;
         this.vlDecayEnabled = DEFAULT_VL_DECAY_ENABLED;
         this.vlDecayIntervalSeconds = DEFAULT_VL_DECAY_INTERVAL_SECONDS;
         this.vlDecayAmount = DEFAULT_VL_DECAY_AMOUNT;
@@ -246,6 +279,13 @@ public class Config {
         this.antiEspProximityDistance = DEFAULT_ANTI_ESP_PROXIMITY_DISTANCE;
         this.antiEspHideDelayTicks = DEFAULT_ANTI_ESP_HIDE_DELAY_TICKS;
         this.antiEspUpdateIntervalTicks = DEFAULT_ANTI_ESP_UPDATE_INTERVAL_TICKS;
+        this.antiEspBudgetMicros = DEFAULT_ANTI_ESP_BUDGET_MICROS;
+        this.antiEspCacheTicks = DEFAULT_ANTI_ESP_CACHE_TICKS;
+        this.antiEspMoveThreshold = DEFAULT_ANTI_ESP_MOVE_THRESHOLD;
+        this.antiEspRayCount = DEFAULT_ANTI_ESP_RAY_COUNT;
+        this.antiEspFovEnabled = DEFAULT_ANTI_ESP_FOV_ENABLED;
+        this.antiEspFovDegrees = DEFAULT_ANTI_ESP_FOV_DEGREES;
+        this.antiEspRestoreMetadata = DEFAULT_ANTI_ESP_RESTORE_METADATA;
         this.antiEspHideSounds = DEFAULT_ANTI_ESP_HIDE_SOUNDS;
         this.antiEspHideGlowing = DEFAULT_ANTI_ESP_HIDE_GLOWING;
         this.antiEspVerboseDebug = DEFAULT_ANTI_ESP_VERBOSE_DEBUG;
@@ -300,6 +340,10 @@ public class Config {
      */
     public Config(JavaPlugin plugin, Logger logger, RemoteConfigClient.Snapshot remoteSnapshot) {
         plugin.saveDefaultConfig();
+        // Creates modules.yml and modules/*.yml on first run, and moves a pre-split config.yml
+        // over to them. Has to happen before the layers are stacked, since it writes the files
+        // those layers read.
+        ModuleLayout.install(plugin);
         // Not plugin.getConfig(): managed sections live in the jar's managed-defaults.yml and may
         // be overridden by the API preset.
         FileConfiguration config = ConfigLayers.build(plugin, remoteSnapshot);
@@ -386,6 +430,9 @@ public class Config {
         this.autostartComment = config.getString("autostart.comment", DEFAULT_AUTOSTART_COMMENT);
         this.serverAddress = config.getString("detection.endpoint",
                 config.getString("ai.server", DEFAULT_SERVER_ADDRESS));
+        this.reserveServerAddress = config.getString("detection.reserve-endpoint",
+                DEFAULT_RESERVE_SERVER_ADDRESS);
+        this.safeNameCheck = config.getBoolean("punishments.safe-name-check", DEFAULT_SAFE_NAME_CHECK);
         this.serverIdentityName = config.getString("server-identity.name", DEFAULT_SERVER_IDENTITY_NAME);
         this.serverIdentityFamily = config.getString("server-identity.family", DEFAULT_SERVER_IDENTITY_FAMILY);
         this.interServerEnabled = config.getBoolean("server-identity.interserver.enabled",
@@ -400,6 +447,12 @@ public class Config {
                 "server-identity.reporting.alert-threshold", logger);
         this.updatesEnabled = config.getBoolean("updates.enabled", DEFAULT_UPDATES_ENABLED);
         this.visionEnabled = config.getBoolean("vision.enabled", DEFAULT_VISION_ENABLED);
+        this.reportsEnabled = config.getBoolean("reports.enabled", DEFAULT_REPORTS_ENABLED);
+        this.menusEnabled = config.getBoolean("menus.enabled", DEFAULT_MENUS_ENABLED);
+        this.reportCooldownSeconds = Math.max(0,
+                config.getInt("reports.cooldown-seconds", DEFAULT_REPORT_COOLDOWN_SECONDS));
+        this.visionRegionScanIntervalTicks = Math.max(0,
+                config.getInt("vision.region-scan-minutes", DEFAULT_VISION_REGION_SCAN_MINUTES)) * 60 * 20;
         this.vlDecayEnabled = config.getBoolean("violation.vl-decay.enabled", DEFAULT_VL_DECAY_ENABLED);
         this.vlDecayIntervalSeconds = config.getInt("violation.vl-decay.interval", DEFAULT_VL_DECAY_INTERVAL_SECONDS);
         this.vlDecayAmount = config.getInt("violation.vl-decay.amount", DEFAULT_VL_DECAY_AMOUNT);
@@ -417,6 +470,16 @@ public class Config {
         this.antiEspProximityDistance = config.getDouble("anti_esp.proximity_distance", DEFAULT_ANTI_ESP_PROXIMITY_DISTANCE);
         this.antiEspHideDelayTicks = config.getInt("anti_esp.hide_delay_ticks", DEFAULT_ANTI_ESP_HIDE_DELAY_TICKS);
         this.antiEspUpdateIntervalTicks = config.getInt("anti_esp.update_interval_ticks", DEFAULT_ANTI_ESP_UPDATE_INTERVAL_TICKS);
+        this.antiEspBudgetMicros = Math.max(100,
+                config.getInt("anti_esp.budget_micros_per_pass", DEFAULT_ANTI_ESP_BUDGET_MICROS));
+        this.antiEspCacheTicks = Math.max(0, config.getInt("anti_esp.cache_ticks", DEFAULT_ANTI_ESP_CACHE_TICKS));
+        this.antiEspMoveThreshold = Math.max(0.0,
+                config.getDouble("anti_esp.move_threshold", DEFAULT_ANTI_ESP_MOVE_THRESHOLD));
+        this.antiEspRayCount = Math.max(1, Math.min(9,
+                config.getInt("anti_esp.ray_count", DEFAULT_ANTI_ESP_RAY_COUNT)));
+        this.antiEspFovEnabled = config.getBoolean("anti_esp.hide_outside_fov", DEFAULT_ANTI_ESP_FOV_ENABLED);
+        this.antiEspFovDegrees = config.getDouble("anti_esp.fov_degrees", DEFAULT_ANTI_ESP_FOV_DEGREES);
+        this.antiEspRestoreMetadata = config.getBoolean("anti_esp.restore_metadata", DEFAULT_ANTI_ESP_RESTORE_METADATA);
         this.antiEspHideSounds = config.getBoolean("anti_esp.hide_sounds", DEFAULT_ANTI_ESP_HIDE_SOUNDS);
         this.antiEspHideGlowing = config.getBoolean("anti_esp.hide_glowing", DEFAULT_ANTI_ESP_HIDE_GLOWING);
         this.antiEspVerboseDebug = config.getBoolean("anti_esp.verbose_debug", DEFAULT_ANTI_ESP_VERBOSE_DEBUG);
@@ -751,6 +814,22 @@ public class Config {
         return serverAddress;
     }
 
+    /**
+     * Fallback endpoint for when {@link #getServerAddress()} cannot be reached at all, or empty
+     * when failover is switched off.
+     */
+    public String getReserveServerAddress() {
+        return reserveServerAddress == null ? "" : reserveServerAddress.trim();
+    }
+
+    /**
+     * Whether a player whose name cannot be safely substituted into a console command is kicked
+     * directly instead of having the punishment command run for them.
+     */
+    public boolean isSafeNameCheckEnabled() {
+        return safeNameCheck;
+    }
+
     public String getServerIdentityName() {
         return serverIdentityName;
     }
@@ -889,6 +968,26 @@ public class Config {
         return remotePresetApplied;
     }
 
+    /** modules.yml -> reports. With this off there is no /report, no queue and no notifications. */
+    public boolean isReportsEnabled() {
+        return reportsEnabled;
+    }
+
+    /** modules.yml -> menus. Gates /mlsac suspects, /mlsac vision and the GUIs opened from them. */
+    public boolean isMenusEnabled() {
+        return menusEnabled;
+    }
+
+    /** Seconds a player waits between reports; 0 removes the cooldown. Staff are never held to it. */
+    public int getReportCooldownSeconds() {
+        return reportCooldownSeconds;
+    }
+
+    /** Ticks between WorldGuard roster sweeps, or 0 when the sweep is switched off. */
+    public int getVisionRegionScanIntervalTicks() {
+        return visionRegionScanIntervalTicks;
+    }
+
     public boolean isAntiEspEnabled() {
         return antiEspEnabled;
     }
@@ -907,6 +1006,37 @@ public class Config {
 
     public int getAntiEspUpdateIntervalTicks() {
         return antiEspUpdateIntervalTicks;
+    }
+
+    /** Wall-clock budget for one occlusion pass; leftover viewers resume on the next pass. */
+    public int getAntiEspBudgetMicros() {
+        return antiEspBudgetMicros;
+    }
+
+    /** How long a raytrace result stays valid while neither player moves. */
+    public int getAntiEspCacheTicks() {
+        return antiEspCacheTicks;
+    }
+
+    /** Movement (blocks) by either player that forces a fresh raytrace. */
+    public double getAntiEspMoveThreshold() {
+        return antiEspMoveThreshold;
+    }
+
+    public int getAntiEspRayCount() {
+        return antiEspRayCount;
+    }
+
+    public boolean isAntiEspFovEnabled() {
+        return antiEspFovEnabled;
+    }
+
+    public double getAntiEspFovDegrees() {
+        return antiEspFovDegrees;
+    }
+
+    public boolean isAntiEspRestoreMetadata() {
+        return antiEspRestoreMetadata;
     }
 
     public boolean isAntiEspHideSounds() {

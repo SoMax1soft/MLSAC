@@ -115,7 +115,7 @@ public class AlertManager {
     }
 
     private boolean canReceiveAlerts(Player player) {
-        return player.isOp() || player.hasPermission(Permissions.ALERTS) || player.hasPermission(Permissions.ADMIN);
+        return player.isOp() || Permissions.canSeeAlerts(player);
     }
 
     public void sendAlert(String suspectName, double probability, double buffer) {

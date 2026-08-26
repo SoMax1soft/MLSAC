@@ -14,6 +14,7 @@ interserver-alert-format: '&#81FFC2[{MODEL}]&f &#1E9F9A[Межсерверный
 unknown-command: '&cНеизвестная команда: &f{ARGS}'
 players-only: '&cЭта команда доступна только игрокам'
 no-permission: '&cУ вас нет прав'
+module-disabled: '&cЭта функция отключена на сервере'
 player-not-found: '&cИгрок не найден: &f{PLAYER}'
 config-reloaded: '&aКонфигурация перезагружена'
 

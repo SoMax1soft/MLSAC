@@ -41,6 +41,8 @@ import java.util.Map;
  *       matches the plugin build.</li>
  *   <li>{@code plugins/MLSAC/config.yml} — the operator's local file, including any legacy copies
  *       of the managed sections.</li>
+ *   <li>{@code modules/<name>.yml} and {@code modules.yml} — the split per-module files, see
+ *       {@link ModuleLayout}.</li>
  *   <li>The preset fetched from the MLSAC API, validated by {@link RemoteConfigClient}.</li>
  * </ol>
  *
@@ -60,6 +62,7 @@ public final class ConfigLayers {
         YamlConfiguration merged = new YamlConfiguration();
         applyLayer(merged, loadManagedDefaults(plugin));
         applyLayer(merged, plugin.getConfig());
+        ModuleLayout.apply(plugin, merged);
 
         if (snapshot != null && snapshot.hasConfig()) {
             // Sections the preset owns outright are wiped first: a key-by-key merge would

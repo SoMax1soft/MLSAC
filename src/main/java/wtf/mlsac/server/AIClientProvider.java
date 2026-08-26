@@ -90,6 +90,7 @@ public class AIClientProvider {
         HttpAIClient httpClient = new HttpAIClient(
                 plugin,
                 serverAddress,
+                config.getReserveServerAddress(),
                 apiKey,
                 () -> onlinePlayers.size(),
                 config.isDebug(),

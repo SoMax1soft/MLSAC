@@ -83,6 +83,7 @@ public class HttpAIClient implements IAIClient {
 
     private final Main plugin;
     private final String serverAddress;
+    private final EndpointRouter endpoints;
     private final String apiKey;
     private final Logger logger;
     private final boolean debug;
@@ -121,7 +122,7 @@ public class HttpAIClient implements IAIClient {
 
     public HttpAIClient(Main plugin, String serverAddress, String apiKey,
                         IntSupplier onlinePlayersSupplier, boolean debug) {
-        this(plugin, serverAddress, apiKey, onlinePlayersSupplier, debug,
+        this(plugin, serverAddress, "", apiKey, onlinePlayersSupplier, debug,
                 "default", "default", false, true, 0.75);
     }
 
@@ -129,8 +130,17 @@ public class HttpAIClient implements IAIClient {
                         IntSupplier onlinePlayersSupplier, boolean debug,
                         String serverName, String serverFamily, boolean interServerEnabled,
                         boolean eventReportingEnabled, double apiAlertEventThreshold) {
+        this(plugin, serverAddress, "", apiKey, onlinePlayersSupplier, debug, serverName,
+                serverFamily, interServerEnabled, eventReportingEnabled, apiAlertEventThreshold);
+    }
+
+    public HttpAIClient(Main plugin, String serverAddress, String reserveAddress, String apiKey,
+                        IntSupplier onlinePlayersSupplier, boolean debug,
+                        String serverName, String serverFamily, boolean interServerEnabled,
+                        boolean eventReportingEnabled, double apiAlertEventThreshold) {
         this.plugin = plugin;
         this.serverAddress = serverAddress;
+        this.endpoints = new EndpointRouter(serverAddress, reserveAddress);
         this.apiKey = apiKey;
         this.logger = plugin.getLogger();
         this.debug = debug;
@@ -297,11 +307,16 @@ public class HttpAIClient implements IAIClient {
         SchedulerManager.getAdapter().runSync(() -> {
             String chatMessage = ColorUtil.colorize("&c[MLSAC] &f" + message);
             for (Player player : Bukkit.getOnlinePlayers()) {
-                if (player.hasPermission(Permissions.ALERTS) || player.isOp()) {
+                if (player.isOp() || Permissions.canSeeAlerts(player)) {
                     player.sendMessage(chatMessage);
                 }
             }
         });
+    }
+
+    /** The backend address requests currently go to. Switches only on a failed connection. */
+    private String endpoint() {
+        return endpoints.current();
     }
 
     @Override
@@ -311,62 +326,89 @@ public class HttpAIClient implements IAIClient {
         }
 
         return CompletableFuture.supplyAsync(() -> {
-            try {
-                logger.info("[HTTP] Connecting to " + serverAddress + "...");
-
-                String initUrl = serverAddress + "/api/v1/init";
-                JsonObject initJson = payloads.base();
-                initJson.addProperty("apiKey", apiKey);
-                payloads.addOnline(initJson);
-                RequestBody initBody = jsonBody(initJson);
-                Request initRequest = new Request.Builder()
-                        .url(initUrl)
-                        .post(initBody)
-                        .build();
-
-                try (Response response = httpClient.newCall(initRequest).execute()) {
-                    if (response.code() == 401 || response.code() == 403) {
-                        logger.severe("[HTTP] Authentication failed! API key is invalid, expired, or corrupted. Please check your API key in config.yml");
-                        connected.set(false);
-                        return false;
+            // Always starts at the configured endpoint, so a server that failed over during an
+            // outage returns to it as soon as it is reachable again.
+            List<String> candidates = endpoints.candidates();
+            for (int i = 0; i < candidates.size(); i++) {
+                String candidate = candidates.get(i);
+                boolean hasFallbackLeft = i + 1 < candidates.size();
+                try {
+                    if (initSession(candidate)) {
+                        endpoints.select(candidate);
+                        onConnected();
+                        return true;
                     }
-                    if (!response.isSuccessful()) {
-                        logger.warning("[HTTP] Init failed: HTTP " + response.code());
-                        connected.set(false);
-                        return false;
+                    // A reply, just not one we can use (bad key, server error). Another host would
+                    // answer the same way, so there is nothing to fail over to.
+                    connected.set(false);
+                    return false;
+                } catch (Exception e) {
+                    if (hasFallbackLeft && EndpointRouter.isUnreachable(e)) {
+                        logger.warning("[HTTP] " + candidate + " unreachable (" + e.getMessage()
+                                + ") - trying reserve endpoint " + candidates.get(i + 1));
+                        continue;
                     }
-
-                    ResponseBody body = response.body();
-                    String responseBody;
-                    if (body != null) {
-                        responseBody = body.string();
-                    } else {
-                        responseBody = "";
-                    }
-                    handleApiWarnings(responseBody);
-                    sessionId = extractSessionId(responseBody);
-                    if (sessionId == null || sessionId.isEmpty()) {
-                        sessionId = "http-session-" + System.currentTimeMillis();
-                    }
+                    logger.log(Level.SEVERE, "[HTTP] Connection failed: " + e.getMessage());
+                    connected.set(false);
+                    return false;
                 }
+            }
+            connected.set(false);
+            return false;
+        }, httpExecutor);
+    }
 
-                connected.set(true);
-                consecutiveNetworkFailures.set(0);
-                reconnectAttempts.set(0);
-                logger.info("[HTTP] Connected successfully. Session: " + sessionId);
+    /**
+     * Opens a session against one address.
+     *
+     * @return true on success, false when the backend answered but refused
+     * @throws Exception if the host could not be reached, which is what makes failover kick in
+     */
+    private boolean initSession(String baseUrl) throws Exception {
+        logger.info("[HTTP] Connecting to " + baseUrl + "...");
 
-                startHeartbeat();
-                startReportStats();
-                startInterserverEventPoll();
-                startPeriodicCheck();
+        JsonObject initJson = payloads.base();
+        initJson.addProperty("apiKey", apiKey);
+        payloads.addOnline(initJson);
+        Request initRequest = new Request.Builder()
+                .url(baseUrl + "/api/v1/init")
+                .post(jsonBody(initJson))
+                .build();
 
-                return true;
-            } catch (Exception e) {
-                logger.log(Level.SEVERE, "[HTTP] Connection failed: " + e.getMessage());
-                connected.set(false);
+        try (Response response = httpClient.newCall(initRequest).execute()) {
+            if (response.code() == 401 || response.code() == 403) {
+                logger.severe("[HTTP] Authentication failed! API key is invalid, expired, or corrupted."
+                        + " Please check your API key in config.yml");
                 return false;
             }
-        }, httpExecutor);
+            if (!response.isSuccessful()) {
+                logger.warning("[HTTP] Init failed: HTTP " + response.code());
+                return false;
+            }
+
+            ResponseBody body = response.body();
+            String responseBody = body != null ? body.string() : "";
+            handleApiWarnings(responseBody);
+            sessionId = extractSessionId(responseBody);
+            if (sessionId == null || sessionId.isEmpty()) {
+                sessionId = "http-session-" + System.currentTimeMillis();
+            }
+        }
+        return true;
+    }
+
+    /** Marks the session live and starts the background loops. */
+    private void onConnected() {
+        connected.set(true);
+        consecutiveNetworkFailures.set(0);
+        reconnectAttempts.set(0);
+        logger.info("[HTTP] Connected successfully to " + endpoint() + ". Session: " + sessionId
+                + (endpoints.isOnReserve() ? " (reserve endpoint)" : ""));
+
+        startHeartbeat();
+        startReportStats();
+        startInterserverEventPoll();
+        startPeriodicCheck();
     }
 
     private String extractSessionId(String responseBody) {
@@ -463,7 +505,7 @@ public class HttpAIClient implements IAIClient {
     private void sendHeartbeat() {
         CompletableFuture.runAsync(() -> {
             try {
-                String url = serverAddress + "/api/v1/heartbeat";
+                String url = endpoint() + "/api/v1/heartbeat";
                 JsonObject json = payloads.base();
                 payloads.addSession(json, sessionId);
                 payloads.addOnline(json);
@@ -540,7 +582,7 @@ public class HttpAIClient implements IAIClient {
     private void sendReportStats() {
         CompletableFuture.runAsync(() -> {
             try {
-                String url = serverAddress + "/api/v1/online";
+                String url = endpoint() + "/api/v1/online";
                 JsonObject json = payloads.base();
                 payloads.addSession(json, sessionId);
                 payloads.addOnline(json);
@@ -591,7 +633,7 @@ public class HttpAIClient implements IAIClient {
 
         CompletableFuture.runAsync(() -> {
             try {
-                String url = serverAddress + "/api/v1/events/poll";
+                String url = endpoint() + "/api/v1/events/poll";
                 JsonObject json = payloads.base();
                 payloads.addSession(json, sessionId);
 
@@ -630,7 +672,7 @@ public class HttpAIClient implements IAIClient {
     }
 
     private void sendLegacyReportStats(JsonObject json) throws IOException {
-        String url = serverAddress + "/api/v1/reportstats";
+        String url = endpoint() + "/api/v1/reportstats";
         Request request = new Request.Builder()
                 .url(url)
                 .post(jsonBody(json))
@@ -738,7 +780,7 @@ public class HttpAIClient implements IAIClient {
 
     private void executeStreamingPredict(JsonObject json,
             io.reactivex.rxjava3.core.ObservableEmitter<AIResponse> emitter) throws IOException {
-        String url = serverAddress + "/api/v1/predict-stream";
+        String url = endpoint() + "/api/v1/predict-stream";
         Request request = new Request.Builder()
                 .url(url)
                 .post(jsonBody(json))
@@ -835,7 +877,7 @@ public class HttpAIClient implements IAIClient {
         }
         return CompletableFuture.supplyAsync(() -> {
             try {
-                String url = serverAddress + "/api/v1/events";
+                String url = endpoint() + "/api/v1/events";
                 Request request = new Request.Builder()
                         .url(url)
                         .post(jsonBody(json))
@@ -874,7 +916,7 @@ public class HttpAIClient implements IAIClient {
             String targetUuid, String targetName, String reason, List<Double> checks, boolean crossServer) {
         JsonObject json = payloads.reportSubmission(reporterUuid, reporterName, targetUuid, targetName,
                 reason, checks, crossServer, sessionId);
-        CompletableFuture<Boolean> future = postReportRequest(serverAddress + "/api/v1/reports", json);
+        CompletableFuture<Boolean> future = postReportRequest(endpoint() + "/api/v1/reports", json);
         if (crossServer && interServerEnabled) {
             JsonObject eventJson = payloads.event("report", targetUuid, targetName, "report",
                     1.0, 0.0, 0, "report", "", sessionId);
@@ -894,7 +936,7 @@ public class HttpAIClient implements IAIClient {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 Request request = new Request.Builder()
-                        .url(serverAddress + "/api/v1/reports/list")
+                        .url(endpoint() + "/api/v1/reports/list")
                         .post(jsonBody(json))
                         .header("X-API-Key", apiKey)
                         .build();
@@ -936,7 +978,7 @@ public class HttpAIClient implements IAIClient {
                 return CompletableFuture.completedFuture(false);
         }
         JsonObject json = payloads.reportTransition(handlerName, cancelReason, sessionId);
-        return postReportRequest(serverAddress + "/api/v1/reports/" + reportId + "/" + action, json);
+        return postReportRequest(endpoint() + "/api/v1/reports/" + reportId + "/" + action, json);
     }
 
     @Override
@@ -947,7 +989,7 @@ public class HttpAIClient implements IAIClient {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 Request request = new Request.Builder()
-                        .url(serverAddress + "/api/v1/vision/flagged")
+                        .url(endpoint() + "/api/v1/vision/flagged")
                         .get()
                         .header("X-API-Key", apiKey)
                         .build();
@@ -973,7 +1015,7 @@ public class HttpAIClient implements IAIClient {
 
     private CompletableFuture<Boolean> postReportRequest(String url, JsonObject json) {
         if (!isConnected() || isServerInErrorState()) {
-            logger.warning("[HTTP] Report request skipped: not connected to backend (" + serverAddress
+            logger.warning("[HTTP] Report request skipped: not connected to backend (" + endpoint()
                     + "). Check detection.enabled and the API key in config.yml.");
             return CompletableFuture.completedFuture(false);
         }
@@ -1108,7 +1150,7 @@ public class HttpAIClient implements IAIClient {
 
     @Override
     public String getServerAddress() {
-        return serverAddress;
+        return endpoints.current();
     }
 
     public void setAutoReconnectEnabled(boolean enabled) {
@@ -1169,7 +1211,7 @@ public class HttpAIClient implements IAIClient {
         
         CompletableFuture.runAsync(() -> {
             try {
-                String url = serverAddress + "/api/v1/heartbeat";
+                String url = endpoint() + "/api/v1/heartbeat";
                 JsonObject json = payloads.base();
                 payloads.addSession(json, sessionId);
                 payloads.addOnline(json);
@@ -1202,7 +1244,7 @@ public class HttpAIClient implements IAIClient {
     public CompletableFuture<Long> measureLatency() {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                String url = serverAddress + "/api/v1/heartbeat";
+                String url = endpoint() + "/api/v1/heartbeat";
                 JsonObject json = payloads.base();
                 payloads.addSession(json, sessionId);
                 payloads.addOnline(json);

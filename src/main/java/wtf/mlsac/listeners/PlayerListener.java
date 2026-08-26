@@ -96,7 +96,7 @@ public class PlayerListener implements Listener {
         try {
             SchedulerManager.getAdapter().runEntitySyncDelayed(player, () -> {
                 if (player.isOnline()) {
-                    if (player.hasPermission(Permissions.ALERTS) || player.hasPermission(Permissions.ADMIN)) {
+                    if (Permissions.canSeeAlerts(player)) {
                         alertManager.enableAlerts(player);
 
                         if (plugin.getUpdateChecker() != null && plugin.getUpdateChecker().isUpdateAvailable()) {

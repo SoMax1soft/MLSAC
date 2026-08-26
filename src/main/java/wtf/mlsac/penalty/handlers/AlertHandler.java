@@ -125,7 +125,7 @@ public class AlertHandler implements ActionHandler {
         }
     }
     private boolean canReceiveAlerts(Player player) {
-        return player.hasPermission(Permissions.ALERTS) || player.hasPermission(Permissions.ADMIN);
+        return Permissions.canSeeAlerts(player);
     }
     @Override
     public ActionType getActionType() {

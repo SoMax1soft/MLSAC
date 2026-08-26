@@ -53,6 +53,13 @@ class SecurityUtilTest {
         assertFalse(SecurityUtil.isSafeCommandName("Steve\nop Steve"));
         assertFalse(SecurityUtil.isSafeCommandName("12345678901234567"), "over 16 chars");
         assertFalse(SecurityUtil.isSafeCommandName("Steve;kill @a"));
+        // The wildcard is the one operators hit in practice: a nick like this reaching
+        // "ban * reason" would target every player instead of one.
+        assertFalse(SecurityUtil.isSafeCommandName("*"));
+        assertFalse(SecurityUtil.isSafeCommandName("Steve*"));
+        assertFalse(SecurityUtil.isSafeCommandName("*Steve*"));
+        assertFalse(SecurityUtil.isSafeCommandName("@e[type=player]"));
+        assertFalse(SecurityUtil.isSafeCommandName("Steve\"Notch"));
     }
 
     @Test

@@ -24,27 +24,116 @@ commands:
       /mlsac profile <player> - View player profile
       /mlsac kicklist - View kick history
       /mlsac punish <player> - Execute max punishment
-    permission: mlsac.admin
+    # Deliberately not gated here: a command-level permission is checked by Bukkit before the
+    # plugin ever sees the command, which would make every per-subcommand node below unreachable
+    # for anyone without it. Each subcommand checks its own node instead.
     aliases: [ml, mls]
   report:
     description: Report a player to the staff (/report <nick> <reason>)
     usage: /report <nick> <reason>
 
+# One node per action. Grant exactly what a rank needs:
+#   /lp group moderator permission set mlsac.command.alerts
+#   /lp group moderator permission set mlsac.notify.alerts
+# The coarse nodes at the bottom are the previous scheme and still work — they are declared as
+# parents of the new ones, so existing rank setups keep granting the same access.
 permissions:
+  # ── Subcommands ───────────────────────────────────────────────────────────────────────────
+  mlsac.command.alerts:
+    description: /mlsac alerts — toggle receiving alerts
+    default: false
+  mlsac.command.monitor:
+    description: /mlsac monitor — toggle monitor mode (show all detections)
+    default: false
+  mlsac.command.suspects:
+    description: /mlsac suspects — open the suspects GUI
+    default: false
+  mlsac.command.vision:
+    description: /mlsac vision — open the MLS VISION watch list
+    default: false
+  mlsac.command.profile:
+    description: /mlsac profile and /mlsac prob — view a player's detection profile
+    default: false
+  mlsac.command.punish:
+    description: /mlsac punish — execute the maximum punishment on a player
+    default: false
+  mlsac.command.kicklist:
+    description: /mlsac kicklist — view the anticheat kick history
+    default: false
+  mlsac.command.falsepositive:
+    description: /mlsac falsepositive — export a player's ticks to CSV
+    default: false
+  mlsac.command.collect:
+    description: /mlsac start and /mlsac stop — training data collection
+    default: false
+  mlsac.command.status:
+    description: /mlsac status and /mlsac datastatus — API connection and daily stats
+    default: false
+  mlsac.command.reload:
+    description: /mlsac reload — reload the configuration
+    default: false
+  mlsac.command.reinstall:
+    description: /mlsac reinstall — add missing fields to config, messages, menu and holograms
+    default: false
+  mlsac.command.animation:
+    description: /mlsac animation — test, list and reload ban animations
+    default: false
+
+  # ── Notifications ─────────────────────────────────────────────────────────────────────────
+  mlsac.notify.alerts:
+    description: Receives cheat alerts in chat, the alert hologram and the detection sound
+    default: false
+  mlsac.notify.reports:
+    description: Receives player reports, and is not held to the report cooldown
+    default: false
+
+  # ── Exemptions ────────────────────────────────────────────────────────────────────────────
+  mlsac.bypass:
+    description: Exempts the player from all MLSAC checks, including Anti-ESP
+    default: false
+    children:
+      mlsac.antiesp.bypass: true
+  mlsac.antiesp.bypass:
+    description: Exempts the player from the Anti-ESP occlusion engine only
+    default: false
+
+  # ── Previous scheme, kept working ─────────────────────────────────────────────────────────
   mlsac.admin:
-    description: Allows use of all MLSAC commands
+    description: Everything above. Kept from the previous permission scheme
     default: op
     children:
       mlsac.alerts: true
       mlsac.prob: true
       mlsac.reload: true
       mlsac.collect: true
+      mlsac.command.punish: true
+      mlsac.command.kicklist: true
+      mlsac.command.falsepositive: true
+      mlsac.command.status: true
+      mlsac.command.reinstall: true
+      mlsac.command.animation: true
   mlsac.alerts:
-    description: Allows toggling AI alerts
+    description: Alerts and the staff GUIs. Kept from the previous permission scheme
     default: op
+    children:
+      mlsac.command.alerts: true
+      mlsac.command.monitor: true
+      mlsac.command.suspects: true
+      mlsac.command.vision: true
+      mlsac.notify.alerts: true
+      mlsac.notify.reports: true
   mlsac.prob:
-    description: Allows probability tracking
+    description: Player detection profiles. Kept from the previous permission scheme
     default: op
+    children:
+      mlsac.command.profile: true
   mlsac.reload:
-    description: Allows config reload
+    description: Config reload. Kept from the previous permission scheme
     default: op
+    children:
+      mlsac.command.reload: true
+  mlsac.collect:
+    description: Training data collection. Kept from the previous permission scheme
+    default: false
+    children:
+      mlsac.command.collect: true

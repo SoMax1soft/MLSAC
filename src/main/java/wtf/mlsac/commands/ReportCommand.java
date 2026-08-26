@@ -61,6 +61,10 @@ public class ReportCommand implements CommandExecutor, TabCompleter {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (plugin.getReportManager() == null) {
+            sender.sendMessage(prefix() + msg("module-disabled"));
+            return true;
+        }
         if (!(sender instanceof Player)) {
             sender.sendMessage(prefix() + msg("players-only"));
             return true;
@@ -86,6 +90,9 @@ public class ReportCommand implements CommandExecutor, TabCompleter {
 
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
+        if (plugin.getReportManager() == null) {
+            return java.util.Collections.emptyList();
+        }
         if (args.length == 1) {
             String prefixArg = args[0].toLowerCase();
             return Bukkit.getOnlinePlayers().stream()

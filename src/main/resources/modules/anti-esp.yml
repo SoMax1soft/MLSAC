@@ -1,0 +1,64 @@
+# ┌───────────────────────────────────────────────────────────────────────────────┐
+# │                           ANTI-ESP SETTINGS                                   │
+# └───────────────────────────────────────────────────────────────────────────────┘
+#
+# Switch this module on or off in modules.yml -> anti-esp
+#
+# Packet-level player occlusion engine (Anti-Wallhack / Anti-ESP).
+# Hides players completely behind solid blocks to prevent all forms of client ESP.
+#
+# Nothing is changed server-side: players are never untracked or hidden through the Bukkit API,
+# so other plugins keep seeing a completely normal player. Only the packets going to a viewer are
+# filtered, and the full appearance (skin layers, armour, pose, potion invisibility, nametag) is
+# replayed when the player becomes visible again.
+#
+# Players with the "mlsac.bypass" or "mlsac.antiesp.bypass" permission are skipped entirely, both
+# as a viewer and as a target.
+
+# Maximum distance (blocks) within which occlusion raytracing is performed.
+# Players further away than this are never hidden.
+max_distance: 48.0
+
+# Safe proximity radius (blocks) where players are always visible to prevent peeking latency
+proximity_distance: 3.0
+
+# Delay (in server ticks, 20 ticks = 1 second) before hiding a player who just stepped behind a wall.
+# Provides smooth visual transitions, prevents flickering around wall corners, and keeps the
+# destroy/spawn packet rate down. Revealing is always immediate.
+hide_delay_ticks: 5
+
+# Interval (in server ticks) between occlusion recalculation.
+# 2 is a good balance; 1 doubles the CPU cost for barely any accuracy gain.
+update_interval_ticks: 2
+
+# Hard time budget (microseconds) for one occlusion pass. Viewers that do not fit are processed
+# first on the next pass, so a crowded server can never turn this into a tick spike.
+budget_micros_per_pass: 2500
+
+# How long (server ticks) a raytrace result may be reused while neither player has moved.
+cache_ticks: 10
+
+# Movement (blocks) by either player that forces a fresh raytrace before cache_ticks expires.
+move_threshold: 0.30
+
+# Number of sample points on the target's hitbox (1-9). Fewer rays are cheaper but make it
+# slightly easier to stay hidden while a foot or shoulder pokes out from behind cover.
+ray_count: 5
+
+# Also hide players outside the viewer's field of view. Strongest against radar-style ESP, but
+# causes visible pop-in when turning quickly, so it is off by default.
+hide_outside_fov: false
+fov_degrees: 140.0
+
+# Replay the target's metadata (pose, skin layers, invisibility, custom name) on reveal.
+# Leave this on: without it a returning player is rebuilt as a bare default entity.
+restore_metadata: true
+
+# Hide sound effects originating from hidden players
+hide_sounds: true
+
+# Strip the glowing outline of a player who is behind a wall but not hidden yet
+hide_glowing: true
+
+# Enable detailed debug log output in server console for Anti-ESP packet filtering & raycasting
+verbose_debug: false

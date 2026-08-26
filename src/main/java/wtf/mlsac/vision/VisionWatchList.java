@@ -235,7 +235,7 @@ public final class VisionWatchList {
             String colorized = ColorUtil.colorize(message);
 
             for (Player staff : Bukkit.getOnlinePlayers()) {
-                if (staff.hasPermission(Permissions.ADMIN) || staff.hasPermission(Permissions.ALERTS)) {
+                if (Permissions.canSeeAlerts(staff)) {
                     staff.sendMessage(colorized);
                 }
             }

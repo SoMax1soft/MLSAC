@@ -95,30 +95,40 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
     }
 
     private void registerSubCommands() {
-        Set<String> admin = Set.of(Permissions.ADMIN);
-        Set<String> alertsOrAdmin = Set.of(Permissions.ALERTS, Permissions.ADMIN);
-        Set<String> probOrAdmin = Set.of(Permissions.PROB, Permissions.ADMIN);
-        Set<String> reloadOrAdmin = Set.of(Permissions.RELOAD, Permissions.ADMIN);
+        // Each subcommand names its own node first, then whichever coarse nodes used to cover it.
+        // plugin.yml already maps the old nodes onto the new ones, but naming them here keeps the
+        // mapping readable and works regardless of how a permission plugin resolves child nodes.
+        register("start", Set.of(Permissions.CMD_COLLECT, Permissions.COLLECT, Permissions.ADMIN),
+                false, this::handleStart);
+        register("stop", Set.of(Permissions.CMD_COLLECT, Permissions.COLLECT, Permissions.ADMIN),
+                false, this::handleStop);
 
-        // Data collection commands are intentionally permission-less (legacy behavior preserved).
-        register("start", Set.of(), false, this::handleStart);
-        register("stop", Set.of(), false, this::handleStop);
+        register("alerts", Set.of(Permissions.CMD_ALERTS, Permissions.ALERTS, Permissions.ADMIN),
+                true, (sender, args) -> handleAlerts(sender));
+        register("monitor", Set.of(Permissions.CMD_MONITOR, Permissions.ALERTS, Permissions.ADMIN),
+                true, this::handleMonitor);
+        register("suspects", Set.of(Permissions.CMD_SUSPECTS, Permissions.ALERTS, Permissions.ADMIN),
+                true, (sender, args) -> handleSuspects(sender));
+        register("vision", Set.of(Permissions.CMD_VISION, Permissions.ALERTS, Permissions.ADMIN),
+                true, (sender, args) -> handleVision(sender));
+        register("prob", Set.of(Permissions.CMD_PROFILE, Permissions.PROB, Permissions.ADMIN),
+                true, this::handleDeprecatedProb);
+        register("profile", Set.of(Permissions.CMD_PROFILE, Permissions.PROB, Permissions.ADMIN),
+                false, this::handleProfile);
+        register("reload", Set.of(Permissions.CMD_RELOAD, Permissions.RELOAD, Permissions.ADMIN),
+                false, (sender, args) -> handleReload(sender));
 
-        register("alerts", alertsOrAdmin, true, (sender, args) -> handleAlerts(sender));
-        register("monitor", alertsOrAdmin, true, this::handleMonitor);
-        register("suspects", alertsOrAdmin, true, (sender, args) -> handleSuspects(sender));
-        register("vision", alertsOrAdmin, true, (sender, args) -> handleVision(sender));
-        register("prob", probOrAdmin, true, this::handleDeprecatedProb);
-        register("reload", reloadOrAdmin, false, (sender, args) -> handleReload(sender));
-
-        register("reinstall", admin, false, (sender, args) -> handleReinstall(sender));
-        register("datastatus", admin, false, (sender, args) -> handleDataStatus(sender));
-        register("kicklist", admin, false, this::handleKickList);
-        register("punish", admin, false, this::handlePunish);
-        register("profile", admin, false, this::handleProfile);
-        register("falsepositive", admin, false, this::handleFalsePositive);
-        register("status", admin, false, (sender, args) -> handleStatus(sender));
-        register("animation", admin, false, this::handleAnimation);
+        register("punish", Set.of(Permissions.CMD_PUNISH, Permissions.ADMIN), false, this::handlePunish);
+        register("kicklist", Set.of(Permissions.CMD_KICKLIST, Permissions.ADMIN), false, this::handleKickList);
+        register("falsepositive", Set.of(Permissions.CMD_FALSE_POSITIVE, Permissions.ADMIN),
+                false, this::handleFalsePositive);
+        register("status", Set.of(Permissions.CMD_STATUS, Permissions.ADMIN),
+                false, (sender, args) -> handleStatus(sender));
+        register("datastatus", Set.of(Permissions.CMD_STATUS, Permissions.ADMIN),
+                false, (sender, args) -> handleDataStatus(sender));
+        register("reinstall", Set.of(Permissions.CMD_REINSTALL, Permissions.ADMIN),
+                false, (sender, args) -> handleReinstall(sender));
+        register("animation", Set.of(Permissions.CMD_ANIMATION, Permissions.ADMIN), false, this::handleAnimation);
     }
 
     /**
@@ -127,6 +137,9 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
      */
     private void handleVision(CommandSender sender) {
         Player player = (Player) sender;
+        if (!menusEnabled(player)) {
+            return;
+        }
         if (plugin.getVisionWatchList() == null) {
             player.sendMessage(ColorUtil.colorize(plugin.getMessagesConfig().getReportPrefix()
                     + plugin.getMessagesConfig().getMessage("vision-disabled")));
@@ -193,7 +206,19 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
     }
 
     private void handleSuspects(CommandSender sender) {
+        if (!menusEnabled((Player) sender)) {
+            return;
+        }
         new wtf.mlsac.menu.SuspectsMenu(plugin, (Player) sender).open();
+    }
+
+    /** modules.yml -> menus. Tells the player and returns false when the GUIs are switched off. */
+    private boolean menusEnabled(Player player) {
+        if (getConfig().isMenusEnabled()) {
+            return true;
+        }
+        player.sendMessage(getPrefix() + msg("module-disabled"));
+        return false;
     }
 
     private void handleAlerts(CommandSender sender) {
@@ -617,35 +642,78 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
         return comment.trim();
     }
 
+    /**
+     * Lists only the subcommands the sender may actually run.
+     *
+     * <p>The command itself carries no permission (see plugin.yml), so this is what stops a normal
+     * player from being handed a menu of staff tooling they cannot use.
+     */
     private void sendUsage(CommandSender sender) {
-        sender.sendMessage(getPrefix() + msg("usage-header"));
-        sender.sendMessage(msg("usage-start"));
-        sender.sendMessage(msg("usage-stop"));
-        sender.sendMessage(msg("usage-datastatus"));
-        sender.sendMessage(msg("usage-alerts"));
-        sender.sendMessage(ColorUtil.colorize("&7  /mlsac monitor - Toggle monitor mode (show all detections)"));
-        sender.sendMessage(msg("usage-prob"));
-        sender.sendMessage(msg("usage-suspects"));
-        sender.sendMessage(msg("usage-punish"));
-        sender.sendMessage(msg("usage-profile"));
-        sender.sendMessage(ColorUtil.colorize("&7  /mlsac reload - Reload config and animations"));
-        sender.sendMessage(ColorUtil.colorize("&7  /mlsac status - Check API connection, latency, and daily stats"));
-        sender.sendMessage(ColorUtil.colorize("&7  /mlsac animation test <player> <animation> - Test ban animation"));
-        sender.sendMessage(ColorUtil.colorize("&7  /mlsac animation list - List available animations"));
-        sender.sendMessage(ColorUtil.colorize("&7  /mlsac animation reload - Reload only animations"));
-        sender.sendMessage(ColorUtil
+        List<String> lines = new ArrayList<>();
+        addUsage(sender, lines, "start", msg("usage-start"));
+        addUsage(sender, lines, "stop", msg("usage-stop"));
+        addUsage(sender, lines, "datastatus", msg("usage-datastatus"));
+        addUsage(sender, lines, "alerts", msg("usage-alerts"));
+        addUsage(sender, lines, "monitor",
+                ColorUtil.colorize("&7  /mlsac monitor - Toggle monitor mode (show all detections)"));
+        addUsage(sender, lines, "prob", msg("usage-prob"));
+        addUsage(sender, lines, "suspects", msg("usage-suspects"));
+        addUsage(sender, lines, "vision", ColorUtil.colorize("&7  /mlsac vision - Open the MLS VISION watch list"));
+        addUsage(sender, lines, "punish", msg("usage-punish"));
+        addUsage(sender, lines, "profile", msg("usage-profile"));
+        addUsage(sender, lines, "reload", ColorUtil.colorize("&7  /mlsac reload - Reload config and animations"));
+        addUsage(sender, lines, "status",
+                ColorUtil.colorize("&7  /mlsac status - Check API connection, latency, and daily stats"));
+        addUsage(sender, lines, "animation",
+                ColorUtil.colorize("&7  /mlsac animation test <player> <animation> - Test ban animation"));
+        addUsage(sender, lines, "animation", ColorUtil.colorize("&7  /mlsac animation list - List available animations"));
+        addUsage(sender, lines, "animation", ColorUtil.colorize("&7  /mlsac animation reload - Reload only animations"));
+        addUsage(sender, lines, "reinstall", ColorUtil
                 .colorize("&7  /mlsac reinstall - Add missing fields to config, messages, menu, and holograms"));
-        sender.sendMessage(ColorUtil.colorize("&7  /mlsac kicklist [page] - Список киков от AI античита"));
-        sender.sendMessage(
-                ColorUtil.colorize("&7  /mlsac falsepositive restore <player> - Сохранить 5000 тиков игрока в CSV"));
+        addUsage(sender, lines, "kicklist", ColorUtil.colorize("&7  /mlsac kicklist [page] - Список киков от AI античита"));
+        addUsage(sender, lines, "falsepositive", ColorUtil
+                .colorize("&7  /mlsac falsepositive restore <player> - Сохранить 5000 тиков игрока в CSV"));
+
+        if (lines.isEmpty()) {
+            sender.sendMessage(getPrefix() + msg("no-permission"));
+            return;
+        }
+        sender.sendMessage(getPrefix() + msg("usage-header"));
+        for (String line : lines) {
+            sender.sendMessage(line);
+        }
+    }
+
+    private void addUsage(CommandSender sender, List<String> lines, String subCommand, String line) {
+        SubCommand sub = subCommands.get(subCommand);
+        if (sub != null && hasAnyPermission(sender, sub.anyPermission)) {
+            lines.add(line);
+        }
     }
 
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         List<String> completions = new ArrayList<>();
+        // The command carries no permission of its own, so completion has to filter itself —
+        // otherwise every player would be offered the full staff toolset, and the argument
+        // completions below would hand out the online player list to anyone.
         if (args.length == 1) {
-            completions.addAll(filterStartsWith(new ArrayList<>(subCommands.keySet()), args[0]));
-        } else if (args.length == 2) {
+            List<String> allowed = new ArrayList<>();
+            for (Map.Entry<String, SubCommand> entry : subCommands.entrySet()) {
+                if (hasAnyPermission(sender, entry.getValue().anyPermission)) {
+                    allowed.add(entry.getKey());
+                }
+            }
+            completions.addAll(filterStartsWith(allowed, args[0]));
+            return completions;
+        }
+
+        SubCommand requested = subCommands.get(args[0].toLowerCase());
+        if (requested == null || !hasAnyPermission(sender, requested.anyPermission)) {
+            return completions;
+        }
+
+        if (args.length == 2) {
             String subCommand = args[0].toLowerCase();
             if (subCommand.equals("monitor")) {
                 completions.addAll(filterStartsWith(Arrays.asList("chat", "prob"), args[1]));

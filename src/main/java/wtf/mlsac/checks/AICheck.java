@@ -45,6 +45,7 @@ import wtf.mlsac.server.IAIClient;
 import wtf.mlsac.violation.ViolationManager;
 import wtf.mlsac.util.GeyserUtil;
 import wtf.mlsac.util.SecurityUtil;
+import wtf.mlsac.util.BypassCache;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -97,7 +98,7 @@ public class AICheck {
     }
 
     public void onAttack(Player player, Entity target) {
-        if (!config.isAiEnabled()) {
+        if (!config.isAiEnabled() || BypassCache.isExempt(player)) {
             return;
         }
         if (!(target instanceof Player)) {
@@ -127,7 +128,7 @@ public class AICheck {
     }
 
     public void onTeleport(Player player) {
-        if (!config.isAiEnabled()) {
+        if (!config.isAiEnabled() || BypassCache.isExempt(player)) {
             return;
         }
         if (!player.isValid()) {
@@ -141,7 +142,8 @@ public class AICheck {
     }
 
     public void onTick(Player player) {
-        if (!config.isAiEnabled() || !isClientAvailable() || !player.isValid()) {
+        if (!config.isAiEnabled() || !isClientAvailable() || !player.isValid()
+                || BypassCache.isExempt(player)) {
             return;
         }
 
@@ -159,7 +161,8 @@ public class AICheck {
     }
 
     public void onRotationPacket(Player player, float yaw, float pitch) {
-        if (!config.isAiEnabled() || !isClientAvailable() || !player.isValid()) {
+        if (!config.isAiEnabled() || !isClientAvailable() || !player.isValid()
+                || BypassCache.isExempt(player)) {
             return;
         }
 
@@ -396,6 +399,7 @@ public class AICheck {
     public void handlePlayerQuit(Player player) {
         if (player != null) {
             playerData.remove(player.getUniqueId());
+            BypassCache.invalidate(player.getUniqueId());
             if (worldGuardCompat != null) {
                 worldGuardCompat.clearCache(player.getUniqueId());
             }

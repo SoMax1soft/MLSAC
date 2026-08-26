@@ -90,13 +90,15 @@ public class SuspectsMenu implements Listener {
     private int renderToken = 0;
 
     public SuspectsMenu(JavaPlugin plugin, Player admin) {
-        this((Main) plugin, admin, Mode.REPORTS);
+        // Reports is the more useful landing tab, but it does not exist when the module is off.
+        this((Main) plugin, admin,
+                ((Main) plugin).getReportManager() != null ? Mode.REPORTS : Mode.CHECKS);
     }
 
     public SuspectsMenu(Main plugin, Player admin, Mode mode) {
         this.plugin = plugin;
         this.admin = admin;
-        this.mode = mode;
+        this.mode = plugin.getReportManager() == null ? Mode.CHECKS : mode;
         this.aiCheck = plugin.getAiCheck();
         FileConfiguration config = plugin.getMenuConfig().getConfig();
         String title = config.getString("gui.title", "&cMLSAC &8> &7Suspects");
@@ -134,6 +136,11 @@ public class SuspectsMenu implements Listener {
             return;
         }
 
+        if (plugin.getReportManager() == null) {
+            currentReports = new ArrayList<>();
+            renderReportsPage();
+            return;
+        }
         // Reports mode: the queue lives on the backend, so fetch it asynchronously.
         plugin.getReportManager().fetchReports(admin, reports -> {
             if (!admin.isOnline() || token != renderToken) {
@@ -460,6 +467,9 @@ public class SuspectsMenu implements Listener {
                 renderCurrentPage();
                 return true;
             case MODE_SLOT:
+                if (plugin.getReportManager() == null) {
+                    return true; // Only one tab exists while the reports module is off.
+                }
                 mode = mode == Mode.REPORTS ? Mode.CHECKS : Mode.REPORTS;
                 page = 0;
                 updateInventory();

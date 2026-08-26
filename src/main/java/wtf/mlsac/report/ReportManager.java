@@ -55,11 +55,16 @@ import java.util.function.Consumer;
  * status transitions, and captures the cancellation reason from chat.
  */
 public class ReportManager implements Listener {
-    private static final long REPORT_COOLDOWN_MS = TimeUnit.SECONDS.toMillis(30);
     private static final long REPORTS_CACHE_TTL_MS = 2500L;
 
     private final Main plugin;
     private final ConcurrentHashMap<UUID, Long> cooldowns = new ConcurrentHashMap<>();
+
+    /** Read per call rather than cached, so /mlsac reload takes effect without a restart. */
+    private long reportCooldownMs() {
+        return TimeUnit.SECONDS.toMillis(plugin.getPluginConfig().getReportCooldownSeconds());
+    }
+
     // Admin UUID -> pending cancel info (reportId + targetName) awaiting reason in chat.
     private final ConcurrentHashMap<UUID, PendingCancel> pendingCancels = new ConcurrentHashMap<>();
     // Report ID -> timestamp (ms) when claimed
@@ -121,7 +126,7 @@ public class ReportManager implements Listener {
 
         long now = System.currentTimeMillis();
         Long readyAt = cooldowns.get(reporter.getUniqueId());
-        if (readyAt != null && readyAt > now && !reporter.hasPermission(Permissions.ALERTS)) {
+        if (readyAt != null && readyAt > now && !Permissions.canSeeReports(reporter)) {
             long secondsLeft = (readyAt - now + 999) / 1000;
             message(reporter, "report-cooldown", "{SECONDS}", String.valueOf(secondsLeft));
             return;
@@ -146,7 +151,7 @@ public class ReportManager implements Listener {
             }
         }
 
-        cooldowns.put(reporter.getUniqueId(), now + REPORT_COOLDOWN_MS);
+        cooldowns.put(reporter.getUniqueId(), now + reportCooldownMs());
         UUID reporterId = reporter.getUniqueId();
         String reporterName = reporter.getName();
         String finalTargetName = targetName;
@@ -170,7 +175,7 @@ public class ReportManager implements Listener {
         String line = reportPrefix() + msg("report-notify-staff",
                 "{REPORTER}", reporterName, "{PLAYER}", targetName, "{REASON}", reason);
         for (Player staff : Bukkit.getOnlinePlayers()) {
-            if (staff.hasPermission(Permissions.ALERTS) || staff.hasPermission(Permissions.ADMIN)) {
+            if (Permissions.canSeeReports(staff)) {
                 staff.sendMessage(line);
             }
         }
@@ -187,7 +192,7 @@ public class ReportManager implements Listener {
                 "{PLAYER}", targetName != null ? targetName : "Unknown",
                 "{REASON}", reason != null ? reason : "");
         for (Player staff : Bukkit.getOnlinePlayers()) {
-            if (staff.hasPermission(Permissions.ALERTS) || staff.hasPermission(Permissions.ADMIN)) {
+            if (Permissions.canSeeReports(staff)) {
                 staff.sendMessage(line);
             }
         }
@@ -370,7 +375,7 @@ public class ReportManager implements Listener {
                 "{PLAYER}", targetName != null ? targetName : "Unknown",
                 "{REASON}", reasonText);
         for (Player staff : Bukkit.getOnlinePlayers()) {
-            if (staff.hasPermission(Permissions.ALERTS) || staff.hasPermission(Permissions.ADMIN)) {
+            if (Permissions.canSeeReports(staff)) {
                 staff.sendMessage(line);
             }
         }

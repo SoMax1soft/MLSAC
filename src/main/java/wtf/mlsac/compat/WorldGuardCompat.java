@@ -48,6 +48,18 @@ public class WorldGuardCompat {
     private final boolean enabled;
     private final Map<String, Set<String>> disabledRegions;
     private final Map<UUID, RegionCheckCache> bypassCache = new ConcurrentHashMap<>();
+    /**
+     * Memo of uuid -> player name for region rosters.
+     *
+     * <p>Resolving an offline uuid is far from free: once the name is not in the profile or the
+     * usercache, the server falls back to reading that player's data file off disk. A roster sweep
+     * touches the same handful of uuids across hundreds of regions, so without this every sweep
+     * turned into hundreds of disk reads. Names change rarely enough that a session-lifetime memo
+     * is the right trade.
+     */
+    private final Map<UUID, String> nameCache = new ConcurrentHashMap<>();
+    /** Placeholder for a uuid this server has no name for, so it is not looked up again. */
+    private static final String UNRESOLVED = "";
     private boolean worldGuardAvailable;
     public WorldGuardCompat(Logger logger, boolean enabled, List<String> disabledRegionsList) {
         this.logger = logger;
@@ -200,6 +212,10 @@ public class WorldGuardCompat {
                     continue;
                 }
                 for (ProtectedRegion region : regionManager.getRegions().values()) {
+                    // Cheap emptiness test first: an unclaimed region needs no name resolution at all.
+                    if (isEmpty(region.getOwners()) && isEmpty(region.getMembers())) {
+                        continue;
+                    }
                     Set<String> owners = resolveDomain(region.getOwners());
                     Set<String> members = resolveDomain(region.getMembers());
                     if (owners.isEmpty() && members.isEmpty()) {
@@ -214,6 +230,10 @@ public class WorldGuardCompat {
         return rosters;
     }
 
+    private static boolean isEmpty(DefaultDomain domain) {
+        return domain == null || (domain.getPlayers().isEmpty() && domain.getUniqueIds().isEmpty());
+    }
+
     private Set<String> resolveDomain(DefaultDomain domain) {
         Set<String> names = new LinkedHashSet<>();
         if (domain == null) {
@@ -222,22 +242,39 @@ public class WorldGuardCompat {
         try {
             names.addAll(domain.getPlayers()); // entries stored as plain names, already resolved
             for (UUID uuid : domain.getUniqueIds()) {
-                Player online = Bukkit.getPlayer(uuid);
-                if (online != null) {
-                    names.add(online.getName());
-                    continue;
-                }
-                // Reads the local usercache; null for a uuid this server has never seen, which we
-                // skip rather than asking Mojang and stalling the tick.
-                String cached = Bukkit.getOfflinePlayer(uuid).getName();
-                if (cached != null && !cached.isEmpty()) {
-                    names.add(cached);
+                String name = resolveName(uuid);
+                if (name != null) {
+                    names.add(name);
                 }
             }
         } catch (Exception e) {
             logger.warning("[WorldGuard] Error resolving region domain: " + e.getMessage());
         }
         return names;
+    }
+
+    /**
+     * Resolves a uuid to a player name, at most once per uuid per server session.
+     *
+     * @return the name, or null if this server has never seen the uuid
+     */
+    private String resolveName(UUID uuid) {
+        String cached = nameCache.get(uuid);
+        if (cached != null) {
+            return UNRESOLVED.equals(cached) ? null : cached;
+        }
+
+        Player online = Bukkit.getPlayer(uuid);
+        if (online != null) {
+            nameCache.put(uuid, online.getName());
+            return online.getName();
+        }
+
+        // Reads the local usercache and, failing that, the player's data file; null for a uuid this
+        // server has never seen, which we skip rather than asking Mojang and stalling.
+        String resolved = Bukkit.getOfflinePlayer(uuid).getName();
+        nameCache.put(uuid, resolved == null || resolved.isEmpty() ? UNRESOLVED : resolved);
+        return resolved == null || resolved.isEmpty() ? null : resolved;
     }
 
     /** Immutable snapshot of one region's owner and member lists, by player name. */

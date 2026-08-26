@@ -105,9 +105,6 @@ public class VisionListener implements Listener {
             "addmember", "addmem", "addowner"
     ));
 
-    // Full roster sweep. Cheap enough to run often (it reads WorldGuard's in-memory region map),
-    // but nothing changes minute to minute, so five minutes is plenty.
-    private static final long REGION_SCAN_INTERVAL_TICKS = 6000L; // 5 min
     private static final long REGION_FIRST_SCAN_DELAY_TICKS = 600L; // 30s after enable
 
     private final Main plugin;
@@ -139,11 +136,21 @@ public class VisionListener implements Listener {
      * the region, not of anyone being online, so a roster change must be noticed even when nobody
      * involved has logged in for weeks. Each sweep reports only the difference against the previous
      * one, which is also the only way removals can be seen at all.
+     *
+     * <p>The sweep runs off the main thread. WorldGuard's region map is an in-memory structure built
+     * for concurrent reads, but resolving a roster uuid to a name can reach the usercache and the
+     * player data files on disk — on a server with a few hundred claims that is not something to do
+     * inside a tick. Nothing here touches world state, and the event queue it feeds is synchronized.
      */
     public void startRegionScanning() {
         if (regionScanTask != null) return;
+        long intervalTicks = plugin.getPluginConfig().getVisionRegionScanIntervalTicks();
+        if (intervalTicks <= 0) {
+            plugin.getLogger().info("MLS VISION: region roster scanning disabled by config");
+            return;
+        }
         regionScanTask = SchedulerManager.getAdapter()
-                .runSyncRepeating(this::scanRegionRosters, REGION_FIRST_SCAN_DELAY_TICKS, REGION_SCAN_INTERVAL_TICKS);
+                .runAsyncRepeating(this::scanRegionRosters, REGION_FIRST_SCAN_DELAY_TICKS, intervalTicks);
     }
 
     public void stopRegionScanning() {
@@ -166,6 +173,8 @@ public class VisionListener implements Listener {
     private void scanRegionRosters() {
         WorldGuardCompat worldGuard = worldGuard();
         if (worldGuard == null || !worldGuard.isWorldGuardAvailable()) return;
+
+        long startedAt = System.nanoTime();
 
         Set<String> seenRegions = new HashSet<>();
         for (WorldGuardCompat.RegionRoster roster : worldGuard.getAllRegionRosters()) {
@@ -216,6 +225,11 @@ public class VisionListener implements Listener {
                 sender.queue(VisionEvent.regionLeft(rosterEntry.substring(rosterEntry.indexOf(':') + 1), regionId, world));
             }
             it.remove();
+        }
+
+        if (plugin.getPluginConfig().isDebug()) {
+            plugin.getLogger().info("MLS VISION: region sweep covered " + seenRegions.size()
+                    + " regions in " + ((System.nanoTime() - startedAt) / 1_000_000L) + "ms");
         }
     }
 

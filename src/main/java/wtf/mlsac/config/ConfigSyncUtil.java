@@ -51,13 +51,17 @@ public final class ConfigSyncUtil {
     // priority over them.
     private static final Set<String> CONFIG_PRESERVED_PATHS = Collections.unmodifiableSet(
             new java.util.LinkedHashSet<>(java.util.Arrays.asList(
+                    "language",
+                    "outputDirectory",
+                    "debug",
                     "detection.api-key",
-                    "detection.enabled",
+                    "detection.endpoint",
+                    "detection.reserve-endpoint",
                     "detection.worldguard",
                     "detection.models",
                     "remote-config.preset",
-                    "vision.enabled",
-                    "anti_esp",
+                    "remote-config.refresh-minutes",
+                    "punishments",
                     "alerts",
                     "violation",
                     "penalties",
@@ -260,6 +264,15 @@ public final class ConfigSyncUtil {
             changed |= syncResourceConfig(plugin, fileName, new File(dataFolder, fileName));
         }
         changed |= syncResourceConfig(plugin, "holograms.yml", new File(dataFolder, "holograms.yml"));
+        // The split module layout: modules.yml and every modules/<name>.yml the build ships.
+        changed |= syncResourceConfig(plugin, ModuleLayout.MODULES_FILE,
+                new File(dataFolder, ModuleLayout.MODULES_FILE));
+        for (ModuleLayout.Module module : ModuleLayout.Module.values()) {
+            String resource = module.resource();
+            if (resource != null) {
+                changed |= syncResourceConfig(plugin, resource, new File(dataFolder, resource));
+            }
+        }
         return changed;
     }
 

@@ -56,6 +56,9 @@ dependencies {
     testImplementation 'net.jqwik:jqwik:1.8.3'
     testImplementation 'org.mockito:mockito-core:5.10.0'
     testImplementation 'com.github.seeseemelk:MockBukkit-v1.16:1.5.2'
+    // PacketEvents' entity/item registries need Adventure to initialise. It arrives at runtime with
+    // the server, but paper-api is compileOnly, so tests that build real packets need it here.
+    testImplementation 'net.kyori:adventure-api:4.16.0'
 }
 
 dependencies {
@@ -206,4 +209,3 @@ build.dependsOn buildAll
 test {
     useJUnitPlatform()
 }
-

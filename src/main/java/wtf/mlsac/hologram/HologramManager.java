@@ -130,7 +130,7 @@ public class HologramManager {
         List<Player> staff = new ArrayList<>();
         Set<UUID> staffIds = new HashSet<>();
         for (Player p : online) {
-            if (p.hasPermission(Permissions.ADMIN) || p.hasPermission(Permissions.ALERTS)) {
+            if (Permissions.canSeeAlerts(p)) {
                 staff.add(p);
                 staffIds.add(p.getUniqueId());
             }

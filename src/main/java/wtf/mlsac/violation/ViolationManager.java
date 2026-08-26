@@ -320,10 +320,15 @@ public class ViolationManager {
                 + " buffer=" + String.format(Locale.ROOT, "%.1f", buffer)
                 + " action=" + actionType
                 + " command='" + command + "'");
-        // Names with spaces or non-standard characters (Geyser/Floodgate prefixes, cracked-server
-        // exotics) must never be substituted into a console command: "kick Steve Notch reason"
-        // would punish a different player. Fall back to a direct API kick instead.
-        if (actionType.isConsoleCommand() && !SecurityUtil.isSafeCommandName(player.getName())) {
+        // Names with spaces or non-standard characters (a "*", Geyser/Floodgate prefixes,
+        // cracked-server exotics) must never be substituted into a console command:
+        // "kick Steve Notch reason" would punish a different player. Fall back to a direct API
+        // kick instead — the player is still removed, just not by a command we cannot trust.
+        //
+        // punishments.safe-name-check turns this off for servers whose punishment commands quote
+        // the name themselves.
+        if (config.isSafeNameCheckEnabled() && actionType.isConsoleCommand()
+                && !SecurityUtil.isSafeCommandName(player.getName())) {
             logger.warning("[Penalty] Player name '" + player.getName()
                     + "' is unsafe for command substitution - skipping '" + command
                     + "', kicking directly via API instead");

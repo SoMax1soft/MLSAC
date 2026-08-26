@@ -10,10 +10,13 @@
 # ║                    ML Anti-Cheat with AI Detection                            ║
 # ╚═══════════════════════════════════════════════════════════════════════════════╝
 
+# What runs at all is decided in modules.yml. Per-module settings live in modules/<name>.yml.
+# This file holds the core: language, API credentials, server identity and platform settings.
+#
 # Schema marker — when a user's config has a different value the plugin runs a one-time wipe
-# migration (preserving detection.api-key, detection.enabled, remote-config.preset,
+# migration (preserving detection.api-key, detection.endpoint, remote-config.preset,
 # penalties.actions). Do not edit.
-_schema-version: 'b50'
+_schema-version: 'b54'
 
 # ┌───────────────────────────────────────────────────────────────────────────────┐
 # │                            GENERAL SETTINGS                                   │
@@ -28,33 +31,46 @@ language: "ru"
 # Directory for saving data files
 outputDirectory: "data"
 
-# Update notifications.
-# The plugin checks MLSAC backend every 5 minutes and notifies admins if a new version is available.
-updates:
-  enabled: true
-
-# MLS VISION — paid, account-wide add-on. When on, the plugin collects social/economic signals
-# (chest transfers, item drop/pickup, /tpa, /pay-style economy transfers, /msg metadata, IP, and
-# playtime — never chat content) and streams them to the MLS backend; nothing is stored locally.
-# Has no effect unless the account has actually purchased MLS VISION on the dashboard — this is
-# just the local on/off switch, same as detection.enabled is for the anticheat itself.
-vision:
-  enabled: false
+# Update notifications: the plugin checks the MLSAC backend every 5 minutes and notifies admins
+# when a new version is available. Switch it off in modules.yml -> updates
 
 # ┌───────────────────────────────────────────────────────────────────────────────┐
 # │                            DETECTION SETTINGS                                 │
 # └───────────────────────────────────────────────────────────────────────────────┘
 detection:
-  # Enable AI-based cheat detection 
-  enabled: true # DONT FORGET TO TURN ON (enabled: true) <---
-  
+  # Whether detection runs at all is set in modules.yml -> detection
+  #
   # AI server endpoint
   endpoint: "https://api.mlsac.net"
+
+  # Fallback endpoint, used only when the one above cannot be reached at all — a connection
+  # timeout, a refused connection or a DNS failure. An HTTP error (bad API key, server error) is
+  # an answer, not an outage, so it never triggers the switch.
+  #
+  # On the next reconnect the primary is tried first again, so a temporary outage does not leave
+  # the server pinned to the reserve forever. Leave empty to disable failover.
+  reserve-endpoint: "https://ruapi.mlsac.net"
   
   # API key for authentication
   # To buy API key visit https://mlsac.net
   # Free trial is also available in dashboard
   api-key: "your-api-key"
+
+# ┌───────────────────────────────────────────────────────────────────────────────┐
+# │                              PUNISHMENTS                                      │
+# └───────────────────────────────────────────────────────────────────────────────┘
+punishments:
+  # Punishment commands are built by substituting the player's name into a console command, so a
+  # name that is not a plain Java-edition nick (spaces, "*", Geyser/Floodgate prefixes, cracked
+  # exotics) can break the command apart and hit the wrong player — "ban Steve Notch reason" bans
+  # Steve and passes "Notch" as part of the reason.
+  #
+  # With this on, such a player is kicked directly through the API instead of running the command:
+  # they still get removed, they just do not get banned by a command that cannot be trusted.
+  #
+  # Set to false to run the command anyway. Only do that if every punishment command in your
+  # preset quotes the name itself.
+  safe-name-check: true
 
 # ┌───────────────────────────────────────────────────────────────────────────────┐
 # │                         REMOTE CONFIGURATION (PRESETS)                        │
@@ -134,34 +150,3 @@ folia:
   # Use region-specific schedulers for location-based tasks
   region-scheduler: # Do not change!
     enabled: true
-
-# ┌───────────────────────────────────────────────────────────────────────────────┐
-# │                           ANTI-ESP SETTINGS                                   │
-# └───────────────────────────────────────────────────────────────────────────────┘
-# Packet-level player occlusion engine (Anti-Wallhack / Anti-ESP).
-# Hides players completely behind solid blocks to prevent all forms of client ESP.
-anti_esp:
-  # Enable Anti-ESP packet filtering
-  enabled: false
-
-  # Maximum distance (blocks) within which occlusion raytracing is performed
-  max_distance: 48.0
-
-  # Safe proximity radius (blocks) where players are always visible to prevent peeking latency
-  proximity_distance: 3.0
-
-  # Delay (in server ticks, 20 ticks = 1 second) before hiding a player who just stepped behind a wall.
-  # Provides smooth visual transitions, prevents flickering around wall corners, and eliminates pop-in delay.
-  hide_delay_ticks: 5
-
-  # Interval (in server ticks) between occlusion recalculation
-  update_interval_ticks: 1
-
-  # Hide sound effects originating from hidden players
-  hide_sounds: true
-
-  # Strip glowing outline metadata bit for hidden players
-  hide_glowing: true
-
-  # Enable detailed debug log output in server console for Anti-ESP packet filtering & raycasting
-  verbose_debug: false

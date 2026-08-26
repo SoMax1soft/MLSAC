@@ -1,0 +1,43 @@
+# ╔═══════════════════════════════════════════════════════════════════════════════╗
+# ║                              MLSAC Modules                                    ║
+# ╚═══════════════════════════════════════════════════════════════════════════════╝
+#
+# One switch per module. This file decides what runs.
+#
+# A module with more than a couple of settings gets its own file under modules/; the rest keep
+# their settings right here, next to the switch, as <module>-<setting>.
+#
+# Turning a module off stops it completely: its tasks are not scheduled, its listeners are not
+# registered and its commands answer that the module is disabled. Nothing else is affected.
+#
+# Apply changes with /mlsac reload.
+
+# AI cheat detection — the anticheat itself.
+# Settings: config.yml -> detection
+detection: true
+
+# Anti-ESP / anti-wallhack packet occlusion engine.
+# Settings: modules/anti-esp.yml
+anti-esp: false
+
+# Player reports: the /report command, the report queue and the staff notifications.
+reports: true
+# Seconds a player waits between two reports; 0 removes the cooldown.
+# Staff (mlsac.notify.reports) are never held to it.
+reports-cooldown-seconds: 30
+
+# Staff GUIs: /mlsac suspects, /mlsac vision and the menus opened from them.
+# The menu text lives in menu_<language>.yml
+menus: true
+
+# MLS VISION — paid, account-wide add-on for social/economic signals (chest transfers, item
+# drop/pickup, /tpa, economy transfers, /msg metadata, IP, playtime — never chat content).
+# Has no effect unless the account has actually purchased it on the dashboard.
+vision: false
+# How often (minutes) to sweep every WorldGuard region for owner/member changes. The sweep runs
+# off the main thread and only reports what changed. Raise it on servers with a lot of claims,
+# or set 0 to switch region tracking off entirely.
+vision-region-scan-minutes: 5
+
+# Update notifications in the console and to admins.
+updates: true

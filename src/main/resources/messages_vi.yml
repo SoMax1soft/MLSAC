@@ -14,6 +14,7 @@ interserver-alert-format: '&#81FFC2[{MODEL}]&f &#1E9F9A[Liên máy chủ: &#19EE
 unknown-command: '&cLệnh không hợp lệ: &f{ARGS}'
 players-only: '&cLệnh này chỉ dành cho người chơi'
 no-permission: '&cBạn không có quyền sử dụng lệnh này'
+module-disabled: '&cTính năng này đã bị tắt trên máy chủ'
 player-not-found: '&cKhông tìm thấy người chơi: &f{PLAYER}'
 config-reloaded: '&aĐã tải lại cấu hình'
 
