@@ -131,9 +131,10 @@ public class AimProcessor {
     }
 
     private float normalizeAngle(float angle) {
-        while (angle > 180)
+        angle = angle % 360;
+        if (angle > 180)
             angle -= 360;
-        while (angle < -180)
+        else if (angle < -180)
             angle += 360;
         return angle;
     }
