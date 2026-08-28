@@ -79,6 +79,13 @@ public class AimProcessor {
     }
 
     public TickData process(float yaw, float pitch) {
+        // Rotations come straight off the wire, so NaN/Infinity are reachable.
+        // Storing one would poison lastYaw/lastPitch permanently and silently
+        // disable the check for that player, so drop the tick instead.
+        if (!Float.isFinite(yaw) || !Float.isFinite(pitch)) {
+            return new TickData(0, 0, 0, 0, 0, 0, 0, 0);
+        }
+
         if (!hasLastRotation) {
             lastYaw = yaw;
             lastPitch = pitch;
